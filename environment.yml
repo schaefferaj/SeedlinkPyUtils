@@ -1,0 +1,12 @@
+name: seedlink-py-utils
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.9
+  - obspy>=1.4
+  - numpy>=1.21
+  - scipy>=1.8
+  - matplotlib>=3.5
+  - pip
+  - pip:
+    - -e .
