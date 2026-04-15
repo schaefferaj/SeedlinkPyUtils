@@ -312,8 +312,20 @@ seedlink-py-dashboard --network AM --interval 10
 # One station's channels
 seedlink-py-dashboard --station DAOB
 
+# Verticals only — one row per station (channels at a station usually share
+# latency, so this is the compact fleet-overview view)
+seedlink-py-dashboard --channel EHZ
+
+# Wildcards in the channel filter (quote to stop the shell from globbing)
+seedlink-py-dashboard --network AM --channel 'HH?'
+seedlink-py-dashboard --channel '*Z'
+
 # Single snapshot — scriptable, no screen clear
 seedlink-py-dashboard --once
+
+# Focus attention on problems — STALE rows at the top, OK at the bottom
+# (alphabetical by NSLC within each status group)
+seedlink-py-dashboard --sort-by-status
 
 # Tighter thresholds (strict "should be near real-time")
 seedlink-py-dashboard --ok-threshold 30 --stale-threshold 300
@@ -376,6 +388,7 @@ run_dashboard(DashboardConfig(
     server="seiscomp.hakai.org:18000",
     interval=10.0,
     network="AM",
+    channel="EHZ",     # one row per station
 ))
 ```
 
@@ -518,8 +531,10 @@ Exactly one of `-I/-L/-Q/-G/-C` is required.
 | `--timeout` | `30` | Per-poll socket timeout (seconds) |
 | `--ok-threshold` | `60` | Latency below this is OK (green) |
 | `--stale-threshold` | `600` | Latency above this is STALE (red); between = LAG (yellow) |
-| `--network`, `-n` | — | Filter by network code |
-| `--station`, `-S` | — | Filter by station code |
+| `--network`, `-n` | — | Filter by network code (exact match, case-insensitive) |
+| `--station`, `-S` | — | Filter by station code (exact match, case-insensitive) |
+| `--channel`, `-c` | — | Filter by channel code; supports `?` / `*` wildcards (e.g. `EHZ`, `HH?`, `*Z`) |
+| `--sort-by-status` | off | Group rows by status: STALE, LAG, UNKNOWN, OK — alphabetical by NSLC within each group |
 | `--no-color` | off | Disable ANSI colour (auto-disabled when stdout isn't a TTY) |
 
 ## Notes
