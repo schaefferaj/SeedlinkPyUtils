@@ -248,6 +248,26 @@ accidentally importing from the working directory instead of the installed packa
   large latency. `UNKNOWN` only fires when `end_time` is missing or
   `UTCDateTime()` can't parse it — a schema surprise, not an operational
   state.
+- **Pagination truncates from the bottom of the sort order.** When
+  `paginate=True` and the table overflows the terminal, `_paginate`
+  slices `rows[:max_rows]` — so whatever the caller's sort has put at
+  the top stays visible. Combined with `--sort-by-status`, that means
+  STALE rows are protected from truncation while OK rows drop off
+  first, which is exactly the "dashboard focuses attention on
+  problems" behaviour we want. The banner `streams: N` and the
+  per-status summary footer are computed from the **full** row set
+  (`all_rows = rows` snapshot inside `render`), not the visible
+  subset, so the totals stay correct regardless of truncation. A
+  dim `... N more rows hidden (X OK, Y LAG)` notice sits between the
+  table and the summary with bucket breakdown in most-common-first
+  order so a hidden STALE stands out even when most hidden rows are
+  OK. Layout overhead is `_LAYOUT_OVERHEAD = 8` lines (banner-2,
+  blank, header, divider, blank, summary, hidden-notice); data-row
+  floor is `_MIN_DATA_ROWS = 3` so a tiny terminal still shows
+  something. Pagination is on only when `clear_screen` is (i.e.
+  interactive live mode, not `--once` and not piped output) — same
+  gating as screen clearing, since both features only make sense
+  when we own the screen and will redraw on a schedule.
 
 ### Multiselect / wildcards
 SeedLink natively supports `?` and `*` wildcards in **LOC and CHA only** — these are

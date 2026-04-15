@@ -73,6 +73,11 @@ built on [ObsPy](https://docs.obspy.org). Provides:
 - Tunable thresholds (`--ok-threshold`, `--stale-threshold`)
 - Same `--network` / `--station` client-side filtering as `seedlink-py-info`
 - `--once` for scripted / cron use (single snapshot, no screen clear)
+- Auto-fits to the terminal — tables larger than the window truncate
+  from the bottom with a `... N more rows hidden (X OK, Y LAG)` notice.
+  Pairs well with `--sort-by-status` (STALE rows stay visible; OK rows
+  drop off first). Pagination only kicks in for interactive live mode;
+  `--once` and redirected output emit the full table.
 - Resilient to transient poll failures — a network blip shows as
   `Poll failed: …` and the loop continues
 
@@ -328,6 +333,17 @@ Colours: green / yellow / red / dim; auto-disabled when stdout is not a TTY
 refusing `INFO`) is reported inline as `Poll failed: …` and the loop
 continues — the dashboard survives a flaky connection without needing a
 restart.
+
+**Pagination.** When the table has more rows than fit in the current
+terminal window, the dashboard truncates from the bottom and adds a
+dim `... N more rows hidden (X OK, Y LAG)` notice so you know something
+was cut and what kind of rows got dropped. Pagination only kicks in
+for the interactive live mode — `--once` and redirected output stay
+unconstrained (`seedlink-py-dashboard --once > log.txt` gives the
+full table). The pagination pairs nicely with `--sort-by-status`
+(when it lands): STALE rows are at the top of the sort order, so they
+stay visible while healthy OK rows are the first to drop off when the
+table is clipped.
 
 Run `seedlink-py-dashboard --help` for the full list of options.
 
