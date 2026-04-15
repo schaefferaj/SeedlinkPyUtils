@@ -38,7 +38,7 @@ SeedlinkPyUtils/
 └── src/seedlink_py_utils/
     ├── __init__.py             # exports run_viewer, run_archiver, query_info, ViewerConfig
     ├── config.py               # ViewerConfig dataclass, THEMES, FILTERS
-    ├── buffer.py               # TraceBuffer + easyseedlink worker (viewer)
+    ├── buffer.py               # TraceBuffer + SLClient worker (viewer)
     ├── processing.py           # inventory loading, response removal, filters
     ├── gui.py                  # HRadioButtons, theme helpers, fullscreen
     ├── viewer.py               # run_viewer() — wires the viewer together
@@ -112,13 +112,15 @@ accidentally importing from the working directory instead of the installed packa
   stubborn WMs (i3, sway, GNOME on Wayland with strict policies).
 
 ### Archiver
-- **SLClient over easyseedlink:** chosen for the state-file capability. On restart, the
-  client tells the server "I last saw sequence N for stream X" and the server replays
-  anything it still has in its ring buffer. This survives short outages without data
-  loss.
-- **Direct miniSEED writes:** `slpacket.get_raw_data()` is appended to the SDS file as
-  raw bytes. No round-trip through numpy — bit-identical to what the server sent. This
-  matches what `slarchive` (the SeisComP reference tool) does.
+- **SLClient with state file:** the state file records the last sequence number
+  per stream. On restart the client tells the server "I last saw sequence N for
+  stream X" and the server replays anything it still has in its ring buffer —
+  surviving short outages without data loss. The viewer also uses SLClient (for
+  the backfill-on-start feature) but doesn't maintain a state file, since
+  viewer history doesn't need to survive a process restart.
+- **Direct miniSEED writes:** `slpack.msrecord` is appended to the SDS file as
+  raw bytes. No round-trip through numpy — bit-identical to what the server sent.
+  This matches what `slarchive` (the SeisComP reference tool) does.
 - **SDS layout:** `<root>/<year>/<NET>/<STA>/<CHA>.D/<NET>.<STA>.<LOC>.<CHA>.D.<year>.<jday>`.
   Empty location codes appear as `..` in the filename (e.g. `PQ.DAOB..HHZ.D.2026.104`).
 - **State save cadence:** every 60 seconds. Worst-case data loss on hard kill is ~1

@@ -216,7 +216,6 @@ def main(argv=None):
         print(json.dumps(parsed, indent=2))
     else:
         print(TABLE_FORMATTERS[args.mode](parsed))
-        print(f"\n({len(parsed)} record{'' if len(parsed) == 1 else 's'})")
     return 0
 
 
