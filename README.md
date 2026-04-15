@@ -64,6 +64,10 @@ built on [ObsPy](https://docs.obspy.org). Provides:
 
 ## Installation
 
+> **New to Python / conda / the terminal?** See [GETTING_STARTED.md](GETTING_STARTED.md)
+> for a zero-to-running walkthrough on Windows and macOS, targeting a Raspberry
+> Shake on your local network.
+
 ### Conda (recommended)
 
 Two steps — create the environment with the scientific stack from `conda-forge`,
