@@ -22,6 +22,11 @@ network. Evolved through several iterations:
 9. Added `seedlink-py-info` for INFO queries (slinktool-style flags,
    `basic_client.Client.get_info` under the hood, defensive XML parsing
    to handle SeisComP/ringserver schema differences)
+10. 0.4.0: added STA/LTA picker (new `picker.py`), startup backfill of the
+    display buffer from the server's ring buffer, native-dropdown filter
+    selector (ttk.Combobox / QComboBox) replacing the in-figure radio strip,
+    and harmonised naming so `--filter NAME` and `--picker NAME` always
+    mean the same band
 
 ## Key design decisions
 
@@ -43,13 +48,15 @@ stream, survives process crashes). The viewer doesn't persist state — on
 reconnect we just want live data back and explicitly skip a second backfill
 to avoid duplicates.
 
-### Why direct `slpacket.get_raw_data()` writes vs Stream.write()
+### Why direct `slpack.msrecord` writes vs Stream.write()
 
 The naive approach `Stream.write(path, format='MSEED', flush=True)` works but
 re-encodes the trace through ObsPy's miniSEED writer, which can change encoding
 choices (Steim2 vs Steim1, record length, etc.) compared to what the server sent.
-Appending raw packet bytes preserves bit-identical data and is faster. This is the
-same approach `slarchive` (the SeisComP reference C tool) takes.
+Appending `slpack.msrecord` (the raw 512-byte miniSEED record attribute on
+SLPacket — the older `get_raw_data()` method name no longer exists) preserves
+bit-identical data and is faster. This is the same approach `slarchive` (the
+SeisComP reference C tool) takes.
 
 ### Why filter affects waveform only, not spectrogram
 

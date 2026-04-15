@@ -97,7 +97,7 @@ seedlink-py-viewer PQ.DAOB..HHZ
 # Dark mode, fullscreen (press Esc to exit)
 seedlink-py-viewer AM.RA382.00.EHZ --dark-mode --fullscreen
 
-# Lock to a preset filter — hides the radio-button strip
+# Lock to a preset filter — hides the dropdown selector
 seedlink-py-viewer PQ.DAOB..HHZ --filter hp3
 
 # Teleseismic P-wave view on a broadband — --pre-filt is auto-lowered for
@@ -285,7 +285,7 @@ for s in streams:
 | `--cmap` | `magma` | Matplotlib colormap |
 | `--water-level` | `60` | Deconvolution water level |
 | `--pre-filt` | `0.05,0.1,45,50` | Response pre-filter corners |
-| `--filter` | — | Lock to a preset filter and hide the radio buttons (see *Filter presets* below). Omit for the interactive selector. |
+| `--filter` | — | Lock to a preset filter and hide the dropdown selector (see *Filter presets* below). Omit for the interactive selector. |
 | `--picker` | — | Enable the STA/LTA picker with one of `local` / `regional` / `tele-p` (see *Picker presets* below). |
 | `--sta` / `--lta` | (preset) | Override STA / LTA window (seconds). Requires `--picker`. |
 | `--trigger-on` / `--trigger-off` | (preset) | Override STA/LTA ratio thresholds. Requires `--picker`. |
@@ -295,7 +295,8 @@ for s in streams:
 ### Filter presets
 
 Grouped by use case. The CLI alias is what you pass to `--filter`; the canonical
-name is what appears on the radio-button strip in interactive mode.
+name is what appears in the interactive dropdown (where each entry reads
+``<name> (<alias>)``, e.g. `BP 1–10 Hz (regional)`).
 
 **Teleseismic (long-period, broadband / GSN-style instruments):**
 
