@@ -248,6 +248,16 @@ accidentally importing from the working directory instead of the installed packa
   large latency. `UNKNOWN` only fires when `end_time` is missing or
   `UTCDateTime()` can't parse it — a schema surprise, not an operational
   state.
+- **Channel filter has wildcards; network/station don't.** `--channel`
+  uses `fnmatch.fnmatchcase` (SeedLink-style `?` / `*`) via
+  `filter_by_channel`; `--network` and `--station` stay exact-match via
+  the shared `info.filter_records`. The asymmetry is deliberate: the
+  common dashboard use case is "verticals only across the fleet"
+  (`--channel EHZ`) or "all HH-band at one station" (`--channel 'HH?'`),
+  which wants wildcards. Filtering to a whole network or a single
+  station is naturally exact. Leaving `filter_records` unchanged also
+  keeps the `seedlink-py-info` CLI's existing `--network` / `--station`
+  semantics stable.
 
 ### Multiselect / wildcards
 SeedLink natively supports `?` and `*` wildcards in **LOC and CHA only** — these are
