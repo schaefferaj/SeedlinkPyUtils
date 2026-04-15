@@ -48,6 +48,7 @@ SeedlinkPyUtils/
     ├── archiver_cli.py         # archiver CLI (seedlink-py-archiver)
     ├── info.py                 # query_info() + XML parsers for INFO responses
     ├── info_cli.py             # info CLI (seedlink-py-info)
+    ├── picker.py               # STA/LTA picker presets + runtime helper
     └── logging_setup.py        # rotating file + console logger
 ```
 
@@ -57,18 +58,52 @@ accidentally importing from the working directory instead of the installed packa
 ## Architecture notes
 
 ### Viewer
-- **Threading model:** SeedLink runs in a daemon thread via `easyseedlink.create_client`,
-  pushing packets into a thread-safe `TraceBuffer`. The matplotlib `FuncAnimation` polls
-  the buffer on its redraw timer. Lock contention is minimal because the buffer copy is
-  cheap and redraws are at 1 Hz by default.
+- **Threading model:** SeedLink runs in a daemon thread via an `SLClient` subclass
+  (`_ViewerBufferClient` in `buffer.py`), pushing packets into a thread-safe
+  `TraceBuffer`. The matplotlib `FuncAnimation` polls the buffer on its redraw
+  timer. Lock contention is minimal because the buffer copy is cheap and redraws
+  are at 1 Hz by default.
+- **Startup backfill:** on first connect the worker sets `begin_time =
+  now - buffer_seconds`, so the server replays recent history from its ring
+  buffer and then transitions seamlessly into live streaming. The viewer opens
+  pre-populated instead of empty. `--no-backfill` skips this for a live-only
+  start. On reconnect after a network blip we do NOT re-request backfill —
+  that would duplicate packets and the user just wants live data back.
 - **Filter scope:** filters are applied **only to the waveform panel**. The spectrogram
   always uses the response-removed-but-unfiltered trace, so changing the filter selector
   doesn't change the spectrogram. This is intentional — the spectrogram is for context.
 - **Filter selection mode:** if `cfg.filter_name` (CLI: `--filter NAME`) is set, the
-  viewer hides the radio-button strip entirely and locks the waveform to that preset,
-  re-laying the gridspec as 2 rows instead of 3. CLI aliases are ASCII (`bp3-25`,
-  `hp3`, etc.) since the canonical `FILTERS` keys have spaces and an en-dash —
+  viewer locks the waveform to that preset and no filter widget is shown. If left
+  unset (interactive), the filter selector is a native dropdown packed above the
+  matplotlib canvas:
+  - **TkAgg** → `ttk.Combobox` packed `before=canvas_widget` in the Tk window
+  - **QtAgg / PyQt5/6 / PySide2/6** → `QComboBox` inside a `QToolBar` added to
+    the `QMainWindow` via `addToolBar(TopToolBarArea, ...)`
+  - **Other backends** → fallback to a legacy horizontal `RadioButtons` strip
+    inserted as an extra gridspec row at the top
+  `create_filter_dropdown` in `gui.py` is the dispatcher; it dispatches by
+  `matplotlib.get_backend()` and returns `None` on unsupported backends (which
+  is the fallback trigger). The native paths are preferred because they stay
+  out of the figure's data area. CLI aliases are ASCII (`bp3-25`, `hp3`, etc.)
+  since the canonical `FILTERS` keys have spaces and an en-dash —
   `FILTER_CLI_ALIASES` in `config.py` is the mapping.
+- **Filter/picker naming is aligned.** Every `PICKER_PRESETS` key
+  (`local`, `regional`, `tele-p`) also exists as a `--filter` alias in
+  `FILTER_CLI_ALIASES`, and the picker's detection band matches the
+  corresponding filter's band. So `--filter regional` and `--picker regional`
+  both operate on BP 1–10 Hz; `--filter tele-p` and `--picker tele-p` both on
+  BP 0.5–2 Hz; `--filter local` and `--picker local` both on BP 2–10 Hz. When
+  adding or editing a preset, keep the two sides in sync (or rename the
+  picker preset if divergence is genuinely needed).
+- **STA/LTA picker:** when `cfg.picker_preset` is set (CLI: `--picker PRESET`), a
+  CFT strip is inserted above the waveform and pick markers are drawn as red
+  vertical axvlines on the waveform panel. The gridspec is built row-by-row
+  (radio? + cft? + wf + sp) based on which features are active. The picker has
+  its own detection filter band — **independent of the display filter** — so
+  switching `--filter` doesn't change what the picker triggers on. Recomputation
+  runs on every redraw (recursive_sta_lta is O(N)); if we ever need to go
+  faster, the honest move is incremental STA/LTA on the streaming buffer, not
+  vectorising what's there.
 - **Response removal:** runs once per redraw on the latest buffer copy, output in m/s.
   Falls back to raw counts (with axis label updated) if no inventory is available.
 - **Fullscreen:** `gui.go_fullscreen()` is TkAgg-targeted with a Qt/Wx/macOS fallback.

@@ -25,14 +25,23 @@ network. Evolved through several iterations:
 
 ## Key design decisions
 
-### Why `SLClient` for archiver, `easyseedlink` for viewer
+### Why `SLClient` for both archiver and viewer
 
-The viewer's data needs are tolerant — if it misses 30 s during a network blip, the
-display catches up. Simple push-callback via `easyseedlink.create_client` is enough.
+Originally the viewer used `easyseedlink.create_client` because its data needs
+are tolerant (missing 30 s during a network blip is cosmetic, not a data-loss
+event). But in 0.4.0 the viewer gained a "backfill on startup" feature — at
+launch it sets `begin_time = now - buffer_seconds` so the server replays
+recent history from its ring buffer before transitioning to live streaming,
+and the display opens pre-populated. `easyseedlink` has no clean hook for a
+start time, so we dropped to `SLClient` (same family the archiver already
+uses). The two clients now share the same packet-handler pattern: skip INFO,
+accept data, push to buffer / write to SDS.
 
-The archiver must not lose data. `SLClient` exposes a state file (last sequence number
-per stream) that lets the server backfill missed packets on reconnect, as long as the
-gap fits within the server's ring buffer (typically ~hours to a day).
+The archiver still has a second reason to prefer `SLClient` that the viewer
+doesn't: the state file for resume-on-restart (last sequence number per
+stream, survives process crashes). The viewer doesn't persist state — on
+reconnect we just want live data back and explicitly skip a second backfill
+to avoid duplicates.
 
 ### Why direct `slpacket.get_raw_data()` writes vs Stream.write()
 

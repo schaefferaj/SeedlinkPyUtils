@@ -3,6 +3,7 @@
 import argparse
 
 from .config import FILTER_CLI_ALIASES, ViewerConfig
+from .picker import PICKER_PRESETS
 from .viewer import run_viewer
 
 
@@ -77,75 +78,140 @@ def build_parser():
         formatter_class=_Formatter,
     )
     p.add_argument("stream", type=parse_nslc,
-                   help="Stream in NET.STA.LOC.CHA format (e.g. AM.RA382.00.EHZ or PQ.DAOB..HHZ).")
+                   help="Stream in NET.STA.LOC.CHA format "
+                        "(e.g. AM.RA382.00.EHZ or PQ.DAOB..HHZ).")
 
-    p.add_argument("--server", "-s", default="seiscomp.hakai.org:18000",
-                   help="SeedLink server host:port.")
-    p.add_argument("--fdsn", default="http://seiscomp.hakai.org/fdsnws",
-                   help="FDSN web-service base URL for response metadata. "
-                        "Set to '' to skip response removal (plot counts).")
-    p.add_argument("--inventory", default=None,
-                   help="Path to a local StationXML file (overrides --fdsn).")
-    p.add_argument("--no-cache", action="store_true",
-                   help="Do not read or write the on-disk inventory cache.")
+    # ---- Data source ------------------------------------------------------
+    g_src = p.add_argument_group("Data source")
+    g_src.add_argument("--server", "-s", default="seiscomp.hakai.org:18000",
+                       help="SeedLink server host:port.")
+    g_src.add_argument("--fdsn", default="http://seiscomp.hakai.org/fdsnws",
+                       help="FDSN web-service base URL for response metadata. "
+                            "Set to '' to skip response removal (plot counts).")
+    g_src.add_argument("--inventory", default=None,
+                       help="Path to a local StationXML file (overrides --fdsn).")
+    g_src.add_argument("--no-cache", action="store_true",
+                       help="Do not read or write the on-disk inventory cache.")
 
-    p.add_argument("--buffer", "-b", type=int, default=300,
-                   help="Rolling buffer length in seconds.")
-    p.add_argument("--redraw-ms", type=int, default=1000,
-                   help="Redraw interval in milliseconds.")
+    # ---- Display buffer ---------------------------------------------------
+    g_buf = p.add_argument_group("Display buffer")
+    g_buf.add_argument("--buffer", "-b", type=int, default=300,
+                       help="Rolling buffer length in seconds.")
+    g_buf.add_argument("--redraw-ms", type=int, default=1000,
+                       help="Redraw interval in milliseconds.")
+    g_buf.add_argument("--no-backfill", action="store_false", dest="backfill",
+                       default=True,
+                       help="Start with an empty display instead of requesting the\n"
+                            "last --buffer seconds from the server's ring buffer\n"
+                            "(default: backfill on, so the viewer opens with\n"
+                            "recent history already drawn).")
 
-    p.add_argument("--nperseg", type=int, default=512,
-                   help="FFT window length in samples.")
-    p.add_argument("--noverlap", type=int, default=400,
-                   help="FFT window overlap in samples.")
-    p.add_argument("--fmin", type=float, default=0.5,
-                   help="Spectrogram minimum frequency (Hz).")
-    p.add_argument("--fmax", type=float, default=50.0,
-                   help="Spectrogram maximum frequency (Hz); clipped to Nyquist at runtime.")
-    p.add_argument("--db-clip", type=parse_db_clip, default=(-180.0, -100.0),
-                   metavar="LO,HI",
-                   help="Spectrogram dB colour limits as 'LO,HI'.")
-    p.add_argument("--cmap", default="magma",
-                   help="Matplotlib colormap for the spectrogram.")
+    # ---- Spectrogram ------------------------------------------------------
+    g_spec = p.add_argument_group("Spectrogram")
+    g_spec.add_argument("--nperseg", type=int, default=512,
+                        help="FFT window length in samples.")
+    g_spec.add_argument("--noverlap", type=int, default=400,
+                        help="FFT window overlap in samples.")
+    g_spec.add_argument("--fmin", type=float, default=0.5,
+                        help="Spectrogram minimum frequency (Hz).")
+    g_spec.add_argument("--fmax", type=float, default=50.0,
+                        help="Spectrogram maximum frequency (Hz); "
+                             "clipped to Nyquist at runtime.")
+    g_spec.add_argument("--db-clip", type=parse_db_clip, default=(-180.0, -100.0),
+                        metavar="LO,HI",
+                        help="Spectrogram dB colour limits as 'LO,HI'.")
+    g_spec.add_argument("--cmap", default="magma",
+                        help="Matplotlib colormap for the spectrogram.")
 
-    p.add_argument("--water-level", type=float, default=60.0,
-                   help="Water-level for response deconvolution.")
-    p.add_argument("--pre-filt", type=parse_pre_filt, default=_DEFAULT_PRE_FILT,
-                   action=_TrackIfSupplied, metavar="F1,F2,F3,F4",
-                   help="Pre-filter cosine taper corners for response removal.\n"
-                        "Auto-lowered to 0.005,0.01,45,50 when --filter is\n"
-                        "'surface' or 'tele-p' (unless you pass this flag\n"
-                        "explicitly — in which case your value wins).")
+    # ---- Response removal -------------------------------------------------
+    g_resp = p.add_argument_group("Response removal")
+    g_resp.add_argument("--water-level", type=float, default=60.0,
+                        help="Water-level for response deconvolution.")
+    g_resp.add_argument("--pre-filt", type=parse_pre_filt,
+                        default=_DEFAULT_PRE_FILT,
+                        action=_TrackIfSupplied, metavar="F1,F2,F3,F4",
+                        help="Pre-filter cosine taper corners for response removal.\n"
+                             "Auto-lowered to 0.005,0.01,45,50 when --filter is\n"
+                             "'surface' or 'tele-p' (unless you pass this flag\n"
+                             "explicitly — in which case your value wins).")
 
-    p.add_argument("--filter", dest="filter_alias",
-                   choices=list(FILTER_CLI_ALIASES.keys()), default=None,
-                   metavar="NAME",
-                   help=(
-                       "Lock the waveform filter to one preset and hide the radio\n"
-                       "buttons. Omit to keep the interactive selector. Options:\n"
-                       "  Teleseismic: surface  (BP 0.02–0.1 Hz, surface waves)\n"
-                       "               tele-p   (BP 0.5–2 Hz, teleseismic P)\n"
-                       "  Regional:    regional (BP 1–10 Hz, Pg/Pn/Sg/Sn)\n"
-                       "  Local:       bp1-25, bp3-25  (BP 1–25, 3–25 Hz)\n"
-                       "               hp1, hp3, hp5   (HP 1 / 3 / 5 Hz)\n"
-                       "  Off:         none\n"
-                       "NB: the default --pre-filt (0.05,0.1,45,50) tapers content\n"
-                       "below 0.05 Hz during response removal — which would mute\n"
-                       "most of what 'surface' and 'tele-p' want to pass. Selecting\n"
-                       "either of those auto-lowers --pre-filt to 0.005,0.01,45,50\n"
-                       "unless you pass --pre-filt explicitly."
-                   ))
+    # ---- Waveform filter --------------------------------------------------
+    g_filt = p.add_argument_group("Waveform filter")
+    g_filt.add_argument("--filter", dest="filter_alias",
+                        choices=list(FILTER_CLI_ALIASES.keys()), default=None,
+                        metavar="NAME",
+                        help=(
+                            "Lock the waveform filter to one preset and hide the\n"
+                            "dropdown. Omit to keep the interactive selector.\n"
+                            "Options:\n"
+                            "  Teleseismic: surface  (BP 0.02–0.1 Hz, surface waves)\n"
+                            "               tele-p   (BP 0.5–2 Hz, teleseismic P)\n"
+                            "  Regional:    regional (BP 1–10 Hz, Pg/Pn/Sg/Sn)\n"
+                            "  Local:       local   (BP 2–10 Hz, standard local band)\n"
+                            "               bp1-25, bp3-25  (BP 1–25, 3–25 Hz wideband)\n"
+                            "               hp1, hp3, hp5   (HP 1 / 3 / 5 Hz)\n"
+                            "  Off:         none\n"
+                            "NB: the default --pre-filt (0.05,0.1,45,50) tapers content\n"
+                            "below 0.05 Hz during response removal — which would mute\n"
+                            "most of what 'surface' and 'tele-p' want to pass. Selecting\n"
+                            "either of those auto-lowers --pre-filt to 0.005,0.01,45,50\n"
+                            "unless you pass --pre-filt explicitly."
+                        ))
 
-    p.add_argument("--fullscreen", "-f", action="store_true",
-                   help="Open fullscreen with no toolbar (press Esc to exit).")
-    p.add_argument("--dark-mode", "-d", action="store_true",
-                   help="Use a dark colour theme.")
+    # ---- STA/LTA picker ---------------------------------------------------
+    g_pick = p.add_argument_group("STA/LTA picker")
+    g_pick.add_argument("--picker", dest="picker_preset",
+                        choices=list(PICKER_PRESETS.keys()), default=None,
+                        metavar="PRESET",
+                        help=(
+                            "Enable the STA/LTA picker with a preset. Each preset\n"
+                            "bundles STA/LTA windows, trigger thresholds, and a\n"
+                            "detection band matching the --filter alias of the same\n"
+                            "name (so --picker regional and --filter regional use\n"
+                            "the same band). Picks show as red vertical lines on\n"
+                            "the waveform, with the CFT drawn in a strip above.\n"
+                            "Presets:\n"
+                            "  local      BP 2–10 Hz, STA 0.5 s / LTA 10 s, 3.5/1.5\n"
+                            "  regional   BP 1–10 Hz, STA 2 s / LTA 30 s, 3.0/1.5\n"
+                            "  tele-p     BP 0.5–2 Hz, STA 5 s / LTA 120 s, 2.5/1.5\n"
+                            "Use --sta / --lta / --trigger-on / --trigger-off to\n"
+                            "override individual fields of the chosen preset."
+                        ))
+    g_pick.add_argument("--sta", type=float, default=None, metavar="SEC",
+                        help="Override STA window (seconds). Requires --picker.")
+    g_pick.add_argument("--lta", type=float, default=None, metavar="SEC",
+                        help="Override LTA window (seconds). Requires --picker.")
+    g_pick.add_argument("--trigger-on", type=float, default=None, metavar="RATIO",
+                        help="Override STA/LTA ratio to trigger on. Requires --picker.")
+    g_pick.add_argument("--trigger-off", type=float, default=None, metavar="RATIO",
+                        help="Override STA/LTA ratio to trigger off. Requires --picker.")
+
+    # ---- Window / appearance ---------------------------------------------
+    g_win = p.add_argument_group("Window / appearance")
+    g_win.add_argument("--fullscreen", "-f", action="store_true",
+                       help="Open fullscreen with no toolbar (press Esc to exit).")
+    g_win.add_argument("--dark-mode", "-d", action="store_true",
+                       help="Use a dark colour theme.")
 
     return p
 
 
 def main(argv=None):
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    # Picker override flags require a preset to hang off of (the preset
+    # supplies the detection filter band).
+    if args.picker_preset is None and any([
+        args.sta is not None,
+        args.lta is not None,
+        args.trigger_on is not None,
+        args.trigger_off is not None,
+    ]):
+        parser.error(
+            "--sta / --lta / --trigger-on / --trigger-off require --picker PRESET "
+            "(pick the closest preset and override the fields you want to change)."
+        )
 
     # Auto-adjust --pre-filt for long-period filter presets when the user
     # hasn't supplied one explicitly. The _TrackIfSupplied action records
@@ -178,7 +244,13 @@ def main(argv=None):
         pre_filt=pre_filt,
         fullscreen=args.fullscreen,
         dark_mode=args.dark_mode,
+        backfill_on_start=args.backfill,
         filter_name=FILTER_CLI_ALIASES[args.filter_alias] if args.filter_alias else None,
+        picker_preset=args.picker_preset,
+        picker_sta=args.sta,
+        picker_lta=args.lta,
+        picker_thr_on=args.trigger_on,
+        picker_thr_off=args.trigger_off,
     )
     run_viewer(cfg)
 

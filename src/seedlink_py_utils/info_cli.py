@@ -63,7 +63,9 @@ def build_parser():
     p.add_argument("server", nargs="?", default="seiscomp.hakai.org:18000",
                    help="SeedLink server host:port.")
 
-    mode = p.add_mutually_exclusive_group(required=True)
+    # ---- Query type (mutually exclusive, one required) -------------------
+    g_query = p.add_argument_group("Query type (exactly one required)")
+    mode = g_query.add_mutually_exclusive_group(required=True)
     mode.add_argument("-I", "--id",          dest="mode", action="store_const",
                       const="id",          help="Server ID and version.")
     mode.add_argument("-L", "--stations",    dest="mode", action="store_const",
@@ -76,22 +78,26 @@ def build_parser():
                       const="connections", help="List active client connections "
                                                 "(often redacted by the server).")
 
-    p.add_argument("--network", "-n",
-                   help="Filter by network code (exact match, case-insensitive). "
-                        "Applies to -L, -Q, -G.")
-    p.add_argument("--station", "-S",
-                   help="Filter by station code (exact match, case-insensitive). "
-                        "Applies to -L, -Q, -G.")
+    # ---- Filtering (client-side) -----------------------------------------
+    g_filt = p.add_argument_group("Filtering (applies to -L, -Q, -G)")
+    g_filt.add_argument("--network", "-n",
+                        help="Filter by network code (exact match, case-insensitive).")
+    g_filt.add_argument("--station", "-S",
+                        help="Filter by station code (exact match, case-insensitive).")
 
-    out = p.add_mutually_exclusive_group()
+    # ---- Output format ---------------------------------------------------
+    g_out = p.add_argument_group("Output format")
+    out = g_out.add_mutually_exclusive_group()
     out.add_argument("--json", dest="output", action="store_const", const="json",
                      help="Emit parsed records as JSON.")
     out.add_argument("--xml",  dest="output", action="store_const", const="xml",
                      help="Emit the raw XML response from the server.")
     p.set_defaults(output="table")
 
-    p.add_argument("--timeout", type=float, default=30.0,
-                   help="Socket timeout in seconds.")
+    # ---- Connection ------------------------------------------------------
+    g_conn = p.add_argument_group("Connection")
+    g_conn.add_argument("--timeout", type=float, default=30.0,
+                        help="Socket timeout in seconds.")
 
     return p
 
