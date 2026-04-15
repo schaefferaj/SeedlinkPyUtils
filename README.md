@@ -94,6 +94,10 @@ seedlink-py-viewer AM.RA382.00.EHZ --dark-mode --fullscreen
 # Lock to a preset filter — hides the radio-button strip
 seedlink-py-viewer PQ.DAOB..HHZ --filter hp3
 
+# Teleseismic P-wave view on a broadband — --pre-filt is auto-lowered for
+# 'surface' and 'tele-p' so the response removal doesn't mute the band
+seedlink-py-viewer IU.ANMO.00.BHZ --filter tele-p
+
 # Point at a different SeedLink server and FDSN for metadata
 seedlink-py-viewer IU.ANMO.00.BHZ \
     --server rtserve.iris.washington.edu:18000 \
@@ -267,9 +271,50 @@ for s in streams:
 | `--cmap` | `magma` | Matplotlib colormap |
 | `--water-level` | `60` | Deconvolution water level |
 | `--pre-filt` | `0.05,0.1,45,50` | Response pre-filter corners |
-| `--filter` | — | Lock to a preset filter (`none`, `bp1-25`, `bp3-25`, `hp1`, `hp3`, `hp5`); hides the radio buttons. Omit to keep the interactive selector. |
+| `--filter` | — | Lock to a preset filter and hide the radio buttons (see *Filter presets* below). Omit for the interactive selector. |
 | `--fullscreen`, `-f` | off | Fullscreen, no toolbar |
 | `--dark-mode`, `-d` | off | Dark colour theme |
+
+### Filter presets
+
+Grouped by use case. The CLI alias is what you pass to `--filter`; the canonical
+name is what appears on the radio-button strip in interactive mode.
+
+**Teleseismic (long-period, broadband / GSN-style instruments):**
+
+| Alias | Preset | Use case |
+|---|---|---|
+| `surface` | BP 0.02–0.1 Hz | Rayleigh/Love surface waves; primary microseism band |
+| `tele-p` | BP 0.5–2 Hz | Teleseismic P (classic WWSSN short-period band) |
+
+**Regional:**
+
+| Alias | Preset | Use case |
+|---|---|---|
+| `regional` | BP 1–10 Hz | Regional earthquakes (Pg/Pn/Sg/Sn) |
+
+**Local (high-frequency, Raspberry Shake / short-period):**
+
+| Alias | Preset | Use case |
+|---|---|---|
+| `bp1-25` | BP 1–25 Hz | Local events, wideband view |
+| `bp3-25` | BP 3–25 Hz | Local events, high-frequency emphasis |
+| `hp1` | HP 1 Hz | Remove microseism and DC |
+| `hp3` | HP 3 Hz | Remove ocean/urban low-frequency noise |
+| `hp5` | HP 5 Hz | Aggressive HP for very noisy sites |
+
+**Off:**
+
+| Alias | Preset | Use case |
+|---|---|---|
+| `none` | None | Response-removed trace without extra filtering |
+
+> **Caveat for long-period presets.** The default `--pre-filt 0.05,0.1,45,50`
+> tapers out content below 0.05 Hz during response removal, which would mute
+> most of what `surface` (BP 0.02–0.1 Hz) wants to pass. The CLI auto-lowers
+> `--pre-filt` to `0.005,0.01,45,50` when you pick `surface` or `tele-p`, and
+> prints a note on startup. Pass `--pre-filt` explicitly to override (your
+> value always wins).
 
 ## Archiver configuration reference
 

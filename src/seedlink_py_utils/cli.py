@@ -47,11 +47,34 @@ def parse_pre_filt(s):
     return vals
 
 
+class _Formatter(argparse.RawTextHelpFormatter,
+                 argparse.ArgumentDefaultsHelpFormatter):
+    """Preserve line breaks in argument help text while still showing defaults."""
+
+
+class _TrackIfSupplied(argparse.Action):
+    """Like the default store action, but also sets `<dest>_set = True` on the
+    namespace so downstream code can tell whether the user passed the flag
+    versus accepted the default."""
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, values)
+        setattr(namespace, f"{self.dest}_set", True)
+
+
+# Filter aliases that want a long-period-friendly pre-filter. Response removal
+# with the standard 0.05,0.1,45,50 taper strips most of the content these
+# bandpasses want to show, so the CLI lowers --pre-filt automatically when one
+# of these is selected and the user hasn't overridden it.
+_LONG_PERIOD_FILTER_ALIASES = {"surface", "tele-p"}
+_DEFAULT_PRE_FILT = (0.05, 0.1, 45.0, 50.0)
+_LONG_PERIOD_PRE_FILT = (0.005, 0.01, 45.0, 50.0)
+
+
 def build_parser():
     p = argparse.ArgumentParser(
         prog="seedlink-py-viewer",
         description="Real-time SeedLink trace + spectrogram viewer.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        formatter_class=_Formatter,
     )
     p.add_argument("stream", type=parse_nslc,
                    help="Stream in NET.STA.LOC.CHA format (e.g. AM.RA382.00.EHZ or PQ.DAOB..HHZ).")
@@ -87,14 +110,31 @@ def build_parser():
 
     p.add_argument("--water-level", type=float, default=60.0,
                    help="Water-level for response deconvolution.")
-    p.add_argument("--pre-filt", type=parse_pre_filt, default=(0.05, 0.1, 45.0, 50.0),
-                   metavar="F1,F2,F3,F4",
-                   help="Pre-filter cosine taper corners for response removal.")
+    p.add_argument("--pre-filt", type=parse_pre_filt, default=_DEFAULT_PRE_FILT,
+                   action=_TrackIfSupplied, metavar="F1,F2,F3,F4",
+                   help="Pre-filter cosine taper corners for response removal.\n"
+                        "Auto-lowered to 0.005,0.01,45,50 when --filter is\n"
+                        "'surface' or 'tele-p' (unless you pass this flag\n"
+                        "explicitly — in which case your value wins).")
 
     p.add_argument("--filter", dest="filter_alias",
                    choices=list(FILTER_CLI_ALIASES.keys()), default=None,
-                   help="Lock the waveform filter to one preset and hide the "
-                        "radio buttons. Omit to keep the interactive selector.")
+                   metavar="NAME",
+                   help=(
+                       "Lock the waveform filter to one preset and hide the radio\n"
+                       "buttons. Omit to keep the interactive selector. Options:\n"
+                       "  Teleseismic: surface  (BP 0.02–0.1 Hz, surface waves)\n"
+                       "               tele-p   (BP 0.5–2 Hz, teleseismic P)\n"
+                       "  Regional:    regional (BP 1–10 Hz, Pg/Pn/Sg/Sn)\n"
+                       "  Local:       bp1-25, bp3-25  (BP 1–25, 3–25 Hz)\n"
+                       "               hp1, hp3, hp5   (HP 1 / 3 / 5 Hz)\n"
+                       "  Off:         none\n"
+                       "NB: the default --pre-filt (0.05,0.1,45,50) tapers content\n"
+                       "below 0.05 Hz during response removal — which would mute\n"
+                       "most of what 'surface' and 'tele-p' want to pass. Selecting\n"
+                       "either of those auto-lowers --pre-filt to 0.005,0.01,45,50\n"
+                       "unless you pass --pre-filt explicitly."
+                   ))
 
     p.add_argument("--fullscreen", "-f", action="store_true",
                    help="Open fullscreen with no toolbar (press Esc to exit).")
@@ -106,6 +146,20 @@ def build_parser():
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
+
+    # Auto-adjust --pre-filt for long-period filter presets when the user
+    # hasn't supplied one explicitly. The _TrackIfSupplied action records
+    # pre_filt_set=True on the namespace if --pre-filt was given.
+    pre_filt = args.pre_filt
+    if (args.filter_alias in _LONG_PERIOD_FILTER_ALIASES
+            and not getattr(args, "pre_filt_set", False)):
+        pre_filt = _LONG_PERIOD_PRE_FILT
+        print(
+            f"--filter {args.filter_alias}: auto-adjusting --pre-filt to "
+            f"{','.join(str(x) for x in pre_filt)} for long-period content. "
+            "Pass --pre-filt explicitly to override."
+        )
+
     cfg = ViewerConfig(
         nslc=args.stream,
         seedlink_server=args.server,
@@ -121,7 +175,7 @@ def main(argv=None):
         db_clip=args.db_clip,
         cmap=args.cmap,
         water_level=args.water_level,
-        pre_filt=args.pre_filt,
+        pre_filt=pre_filt,
         fullscreen=args.fullscreen,
         dark_mode=args.dark_mode,
         filter_name=FILTER_CLI_ALIASES[args.filter_alias] if args.filter_alias else None,

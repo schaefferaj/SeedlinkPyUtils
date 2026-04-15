@@ -23,24 +23,32 @@ THEMES = {
     },
 }
 
+# Presets ordered low-frequency → high-frequency so the radio-button row
+# reads left-to-right from teleseismic long-period to local high-freq.
 FILTERS = {
-    "None":       None,
-    "BP 1–25 Hz": ("bandpass", {"freqmin": 1.0, "freqmax": 25.0, "corners": 4, "zerophase": True}),
-    "BP 3–25 Hz": ("bandpass", {"freqmin": 3.0, "freqmax": 25.0, "corners": 4, "zerophase": True}),
-    "HP 1 Hz":    ("highpass", {"freq": 1.0, "corners": 4, "zerophase": True}),
-    "HP 3 Hz":    ("highpass", {"freq": 3.0, "corners": 4, "zerophase": True}),
-    "HP 5 Hz":    ("highpass", {"freq": 5.0, "corners": 4, "zerophase": True}),
+    "None":         None,
+    "BP 0.02–0.1 Hz": ("bandpass", {"freqmin": 0.02, "freqmax": 0.1, "corners": 4, "zerophase": True}),
+    "BP 0.5–2 Hz":  ("bandpass", {"freqmin": 0.5,  "freqmax": 2.0,  "corners": 4, "zerophase": True}),
+    "BP 1–10 Hz":   ("bandpass", {"freqmin": 1.0,  "freqmax": 10.0, "corners": 4, "zerophase": True}),
+    "BP 1–25 Hz":   ("bandpass", {"freqmin": 1.0,  "freqmax": 25.0, "corners": 4, "zerophase": True}),
+    "BP 3–25 Hz":   ("bandpass", {"freqmin": 3.0,  "freqmax": 25.0, "corners": 4, "zerophase": True}),
+    "HP 1 Hz":      ("highpass", {"freq": 1.0, "corners": 4, "zerophase": True}),
+    "HP 3 Hz":      ("highpass", {"freq": 3.0, "corners": 4, "zerophase": True}),
+    "HP 5 Hz":      ("highpass", {"freq": 5.0, "corners": 4, "zerophase": True}),
 }
 
 # ASCII, shell-friendly aliases for the CLI's --filter option. Each maps to a
 # canonical FILTERS key. Keep in sync with FILTERS when adding presets.
 FILTER_CLI_ALIASES = {
-    "none":   "None",
-    "bp1-25": "BP 1–25 Hz",
-    "bp3-25": "BP 3–25 Hz",
-    "hp1":    "HP 1 Hz",
-    "hp3":    "HP 3 Hz",
-    "hp5":    "HP 5 Hz",
+    "none":     "None",
+    "surface":  "BP 0.02–0.1 Hz",
+    "tele-p":   "BP 0.5–2 Hz",
+    "regional": "BP 1–10 Hz",
+    "bp1-25":   "BP 1–25 Hz",
+    "bp3-25":   "BP 3–25 Hz",
+    "hp1":      "HP 1 Hz",
+    "hp3":      "HP 3 Hz",
+    "hp5":      "HP 5 Hz",
 }
 
 
