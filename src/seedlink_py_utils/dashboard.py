@@ -14,6 +14,7 @@ them.
 
 import dataclasses
 import fnmatch
+import shutil
 import sys
 import time
 from collections import Counter
@@ -165,24 +166,83 @@ def _counts(rows: List[dict]) -> Counter:
     return c
 
 
+# Fixed layout overhead when paginating, in terminal lines:
+#   2  banner (multi-line f-string)
+#   1  blank separator
+#   1  column header
+#   1  divider
+#   1  blank before summary
+#   1  summary
+#   1  hidden-rows notice (always reserved so the floor is safe even
+#      when no truncation ends up happening)
+# = 8 lines. Floor the data-row count at 3 so even a tiny terminal still
+# shows *some* data rather than going blank.
+_LAYOUT_OVERHEAD = 8
+_MIN_DATA_ROWS = 3
+
+
+def _terminal_lines(fallback: int = 24) -> int:
+    """Return terminal height in lines with a sensible fallback."""
+    try:
+        return shutil.get_terminal_size(fallback=(80, fallback)).lines
+    except Exception:
+        return fallback
+
+
+def _paginate(rows: List[dict], term_lines: int):
+    """Fit ``rows`` into the available terminal space.
+
+    Returns ``(visible, hidden_count, hidden_by_status)``. When the input
+    already fits, returns the input unchanged with zero hidden. When it
+    doesn't, truncates from the *end* of the list (preserving the
+    caller's sort order) — so with ``--sort-by-status`` the STALE rows
+    at the top are the ones that stay visible, and the first rows to
+    drop off are OK rows at the bottom.
+    """
+    max_rows = max(_MIN_DATA_ROWS, term_lines - _LAYOUT_OVERHEAD)
+    if len(rows) <= max_rows:
+        return rows, 0, Counter()
+    visible = rows[:max_rows]
+    hidden = rows[max_rows:]
+    return visible, len(hidden), Counter(r["status"] for r in hidden)
+
+
 def render(rows: List[dict], cfg: DashboardConfig, server: str,
-           polled_at: UTCDateTime, clear_screen: bool = True) -> str:
+           polled_at: UTCDateTime, clear_screen: bool = True,
+           paginate: bool = False) -> str:
     """Render one dashboard frame as a single string.
 
     When ``clear_screen`` is True the frame starts with an ANSI clear-
     and-home sequence; pass False for ``--once`` or non-TTY output where
     a growing log is the intent.
+
+    When ``paginate`` is True, truncate the table to fit the current
+    terminal height (via :func:`shutil.get_terminal_size`) and append a
+    "... N more rows hidden" notice summarising what was dropped by
+    status bucket. The banner and summary footer always reflect the
+    **full** row set, so the counts stay accurate regardless of
+    truncation.
     """
+    # Snapshot the full list so the banner and summary reflect totals
+    # rather than the post-truncation subset.
+    all_rows = rows
+    hidden_count = 0
+    hidden_by_status: Counter = Counter()
+    if paginate:
+        rows, hidden_count, hidden_by_status = _paginate(
+            rows, _terminal_lines()
+        )
+
     out = []
     if clear_screen:
         out.append(ANSI_CLEAR)
 
-    # Banner
+    # Banner — streams count is the total, not the visible subset.
     banner = (
         f"SeedLink Stream Availability — {server}\n"
         f"Polled: {polled_at.strftime('%Y-%m-%dT%H:%M:%SZ')}"
         f"   interval: {cfg.interval:.0f}s"
-        f"   streams: {len(rows)}"
+        f"   streams: {len(all_rows)}"
     )
     if cfg.color:
         banner = ANSI_BOLD + banner + ANSI_RESET
@@ -199,7 +259,7 @@ def render(rows: List[dict], cfg: DashboardConfig, server: str,
     out.append(col_hdr)
     out.append("-" * 72)
 
-    # Rows
+    # Rows (possibly truncated)
     for r in rows:
         status = r["status"]
         status_field = f"{status:<7}"
@@ -213,8 +273,18 @@ def render(rows: List[dict], cfg: DashboardConfig, server: str,
         )
         out.append(line)
 
-    # Summary footer
-    counts = _counts(rows)
+    # Truncation notice — ordered by most-populous bucket first.
+    if hidden_count:
+        breakdown = ", ".join(
+            f"{n} {s}" for s, n in hidden_by_status.most_common()
+        )
+        notice = f"  ... {hidden_count} more rows hidden ({breakdown})"
+        if cfg.color:
+            notice = ANSI_DIM + notice + ANSI_RESET
+        out.append(notice)
+
+    # Summary footer — always reflects the full row set.
+    counts = _counts(all_rows)
     summary = (
         f"  OK: {counts['OK']}"
         f"   LAG: {counts['LAG']}"
@@ -271,7 +341,13 @@ def run_dashboard(cfg: DashboardConfig) -> None:
     is_tty = sys.stdout.isatty()
     if not is_tty:
         cfg = dataclasses.replace(cfg, color=False)
-    clear_screen = is_tty and not cfg.once
+    # Screen-clear and pagination are both "interactive live mode" features:
+    # they only make sense when the output is going to a TTY AND we plan to
+    # redraw on a schedule (not --once). Snapshot / piped output stays
+    # unconstrained so the caller gets the full table.
+    interactive = is_tty and not cfg.once
+    clear_screen = interactive
+    paginate = interactive
 
     try:
         while True:
@@ -292,7 +368,9 @@ def run_dashboard(cfg: DashboardConfig) -> None:
                 rows.sort(key=_sort_key_by_status
                           if cfg.sort_by_status else _sort_key)
                 frame = render(rows, cfg, cfg.server,
-                               polled_at=now, clear_screen=clear_screen)
+                               polled_at=now,
+                               clear_screen=clear_screen,
+                               paginate=paginate)
                 sys.stdout.write(frame)
                 sys.stdout.flush()
             except Exception as e:
