@@ -12,6 +12,9 @@ built on [ObsPy](https://docs.obspy.org). Provides:
   miniSEED archive
 - **`seedlink-py-info`** — query a SeedLink server for stations, streams, gaps,
   and active connections (a Python port of `slinktool`'s INFO queries)
+- **`seedlink-py-dashboard`** — live operator dashboard showing per-stream
+  latency with OK / LAG / STALE classification; polls `INFO=STREAMS` on a
+  schedule
 
 ## Features
 
@@ -61,6 +64,17 @@ built on [ObsPy](https://docs.obspy.org). Provides:
   `-G` gaps, `-C` connections
 - Client-side filtering by `--network` and `--station`
 - Output as a human-readable table (default), JSON (`--json`), or raw XML (`--xml`)
+
+### Stream availability dashboard (`seedlink-py-dashboard`)
+- Live terminal dashboard: polls `INFO=STREAMS` every `--interval` seconds
+  and renders a per-NSLC latency table
+- Status classification OK / LAG / STALE / UNKNOWN with ANSI colour
+  (auto-disabled when stdout is not a TTY)
+- Tunable thresholds (`--ok-threshold`, `--stale-threshold`)
+- Same `--network` / `--station` client-side filtering as `seedlink-py-info`
+- `--once` for scripted / cron use (single snapshot, no screen clear)
+- Resilient to transient poll failures — a network blip shows as
+  `Poll failed: …` and the loop continues
 
 ## Installation
 
@@ -278,6 +292,45 @@ other `host:port` as a positional argument.
 
 Run `seedlink-py-info --help` for the full list of options.
 
+### Stream availability dashboard
+
+`seedlink-py-dashboard` is the live complement to `seedlink-py-info`. It polls
+`INFO=STREAMS` on a schedule and shows a coloured per-NSLC latency table with
+OK / LAG / STALE status. Leave it running in a spare terminal or on a side
+monitor to keep an eye on which streams are actually flowing.
+
+```bash
+# Default server, 30 s interval
+seedlink-py-dashboard
+
+# Against IRIS
+seedlink-py-dashboard rtserve.iris.washington.edu:18000
+
+# Just the Shakes, faster polling
+seedlink-py-dashboard --network AM --interval 10
+
+# One station's channels
+seedlink-py-dashboard --station DAOB
+
+# Single snapshot — scriptable, no screen clear
+seedlink-py-dashboard --once
+
+# Tighter thresholds (strict "should be near real-time")
+seedlink-py-dashboard --ok-threshold 30 --stale-threshold 300
+```
+
+**Status bands (defaults).** `OK` < 60 s, `LAG` 60–600 s, `STALE` > 600 s,
+`UNKNOWN` when the server's `end_time` for a stream is empty or unparseable.
+Colours: green / yellow / red / dim; auto-disabled when stdout is not a TTY
+(so `> log.txt` or `| tee` produce a clean growing log).
+
+**Resilience.** A transient poll failure (network blip, server briefly
+refusing `INFO`) is reported inline as `Poll failed: …` and the loop
+continues — the dashboard survives a flaky connection without needing a
+restart.
+
+Run `seedlink-py-dashboard --help` for the full list of options.
+
 
 ### As a Python API
 
@@ -315,6 +368,15 @@ xml = query_info("seiscomp.hakai.org:18000", level="STREAMS")
 streams = filter_records(parse_streams(xml), network="AM")
 for s in streams:
     print(s["network"], s["station"], s["location"], s["channel"])
+
+# Stream availability dashboard
+from seedlink_py_utils import DashboardConfig, run_dashboard
+
+run_dashboard(DashboardConfig(
+    server="seiscomp.hakai.org:18000",
+    interval=10.0,
+    network="AM",
+))
 ```
 
 ## Viewer configuration reference
@@ -445,6 +507,20 @@ field of whichever preset you chose; the detection filter is preset-locked
 | `--timeout` | `30` | Socket timeout (seconds) |
 
 Exactly one of `-I/-L/-Q/-G/-C` is required.
+
+## Dashboard configuration reference
+
+| Flag | Default | Description |
+|---|---|---|
+| `server` (positional) | `seiscomp.hakai.org:18000` | SeedLink server `host:port` |
+| `--interval` | `30` | Poll interval in seconds |
+| `--once` | off | Run one poll and exit (no screen clear) |
+| `--timeout` | `30` | Per-poll socket timeout (seconds) |
+| `--ok-threshold` | `60` | Latency below this is OK (green) |
+| `--stale-threshold` | `600` | Latency above this is STALE (red); between = LAG (yellow) |
+| `--network`, `-n` | — | Filter by network code |
+| `--station`, `-S` | — | Filter by station code |
+| `--no-color` | off | Disable ANSI colour (auto-disabled when stdout isn't a TTY) |
 
 ## Notes
 

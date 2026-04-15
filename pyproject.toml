@@ -43,6 +43,7 @@ seedlink-py-viewer = "seedlink_py_utils.cli:main"
 seedlink-py-mc-viewer = "seedlink_py_utils.cli_mc:main"
 seedlink-py-archiver = "seedlink_py_utils.archiver_cli:main"
 seedlink-py-info = "seedlink_py_utils.info_cli:main"
+seedlink-py-dashboard = "seedlink_py_utils.dashboard_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/schaefferaj/SeedlinkPyUtils"
