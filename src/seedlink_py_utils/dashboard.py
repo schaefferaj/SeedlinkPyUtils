@@ -13,6 +13,7 @@ them.
 """
 
 import dataclasses
+import fnmatch
 import shutil
 import sys
 import time
@@ -52,11 +53,15 @@ class DashboardConfig:
     interval: float = 30.0           # poll period, seconds
     ok_threshold: float = 60.0       # latency < this → OK
     stale_threshold: float = 600.0   # latency > this → STALE; between = LAG
-    network: Optional[str] = None    # client-side NET filter
-    station: Optional[str] = None    # client-side STA filter
+    network: Optional[str] = None    # client-side NET filter (exact match)
+    station: Optional[str] = None    # client-side STA filter (exact match)
+    channel: Optional[str] = None    # client-side CHA filter; ? / * wildcards
+                                     # (e.g. 'EHZ', 'HH?', '*Z')
     color: bool = True               # emit ANSI colour escapes
     once: bool = False               # run one poll and exit (no screen clear)
     timeout: float = 30.0            # per-poll socket timeout, seconds
+    sort_by_status: bool = False     # group rows by status (STALE first);
+                                     # alphabetical NSLC within each group
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +101,22 @@ def _parse_end_time(s: str) -> Optional[UTCDateTime]:
         return UTCDateTime(s)
     except Exception:
         return None
+
+
+def filter_by_channel(records: list, pattern: Optional[str]) -> list:
+    """Filter INFO=STREAMS records by channel code, with SeedLink-style
+    ``?`` / ``*`` wildcards. Case-insensitive, matching the semantics of
+    the existing ``filter_records`` (NET/STA).
+
+    ``pattern=None`` or empty is a no-op. Typical uses:
+    ``'EHZ'`` → exact (collapses a Shake network to one row per station);
+    ``'HH?'`` → all HH-band channels; ``'*Z'`` → all verticals.
+    """
+    if not pattern:
+        return list(records)
+    up = pattern.upper()
+    return [r for r in records
+            if fnmatch.fnmatchcase(r.get("channel", "").upper(), up)]
 
 
 def _fmt_latency(latency_s: Optional[float]) -> str:
@@ -283,6 +304,24 @@ def _sort_key(r: dict):
             r.get("location", ""), r.get("channel", ""))
 
 
+# Status ordering used by --sort-by-status. STALE first (needs focus),
+# then LAG (watch territory), then UNKNOWN (rare schema surprise worth
+# investigating), then OK (healthy confirmation at the bottom). Any status
+# not in this table falls through to the end via the default 99.
+_STATUS_RANK = {"STALE": 0, "LAG": 1, "UNKNOWN": 2, "OK": 3}
+
+
+def _sort_key_by_status(r: dict):
+    """Sort key that ranks by status first, then alphabetically by NSLC.
+
+    Requires ``r["status"]`` to be set — so this is applied to rows
+    returned from :func:`compute_rows`, not to raw INFO=STREAMS records.
+    """
+    return (_STATUS_RANK.get(r.get("status", "UNKNOWN"), 99),
+            r.get("network", ""), r.get("station", ""),
+            r.get("location", ""), r.get("channel", ""))
+
+
 # ---------------------------------------------------------------------------
 # Polling loop
 # ---------------------------------------------------------------------------
@@ -320,9 +359,14 @@ def run_dashboard(cfg: DashboardConfig) -> None:
                     records = filter_records(
                         records, network=cfg.network, station=cfg.station,
                     )
-                records.sort(key=_sort_key)
+                if cfg.channel:
+                    records = filter_by_channel(records, cfg.channel)
                 now = UTCDateTime()
                 rows = compute_rows(records, now, cfg)
+                # Sort after compute_rows so the status-aware ordering has
+                # a status field to key on. Default is alphabetical NSLC.
+                rows.sort(key=_sort_key_by_status
+                          if cfg.sort_by_status else _sort_key)
                 frame = render(rows, cfg, cfg.server,
                                polled_at=now,
                                clear_screen=clear_screen,
