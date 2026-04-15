@@ -1,9 +1,18 @@
-"""Rolling trace buffer and SeedLink client worker."""
+"""Rolling trace buffer and SeedLink client worker for the real-time viewer.
+
+The worker uses ObsPy's ``SLClient`` (rather than the simpler
+``easyseedlink.create_client``) because we want to set a `begin_time` at
+startup to backfill the display from the server's ring buffer. The server
+replays packets from that timestamp and then transitions seamlessly into
+live streaming.
+"""
 
 import threading
+import time
 
 from obspy import Stream, UTCDateTime
-from obspy.clients.seedlink.easyseedlink import create_client
+from obspy.clients.seedlink.slclient import SLClient
+from obspy.clients.seedlink.slpacket import SLPacket
 
 
 class TraceBuffer:
@@ -36,17 +45,77 @@ class TraceBuffer:
             return len(self._stream)
 
 
-def start_seedlink_worker(server: str, nslc, buffer: TraceBuffer):
-    """Start a daemon thread running the SeedLink client and feeding `buffer`."""
-    net, sta, _loc, cha = nslc
+class _ViewerBufferClient(SLClient):
+    """SLClient subclass that appends incoming data packets to a TraceBuffer."""
 
-    def on_data(trace):
-        buffer.append(trace)
+    def __init__(self, buffer: "TraceBuffer"):
+        super().__init__()
+        self._buffer = buffer
+
+    def packet_handler(self, count, slpack):
+        try:
+            ptype = slpack.get_type()
+        except Exception:
+            return False
+
+        # Skip INFO packets; treat everything else as data (same pattern as
+        # the archiver — there is no TYPE_SLDATA constant in current ObsPy).
+        if ptype in (SLPacket.TYPE_SLINF, SLPacket.TYPE_SLINFT):
+            return False
+
+        try:
+            trace = slpack.get_trace()
+        except Exception:
+            return False
+
+        self._buffer.append(trace)
+        return False  # keep running
+
+
+def start_seedlink_worker(server: str, nslc, buffer: "TraceBuffer",
+                          backfill_seconds: int = 0):
+    """Start a daemon thread running an ``SLClient`` worker feeding ``buffer``.
+
+    Parameters
+    ----------
+    server : str
+        SeedLink server ``host:port``.
+    nslc : tuple
+        ``(net, sta, loc, cha)``. Empty LOC renders as two spaces in the
+        SeedLink multiselect field.
+    buffer : TraceBuffer
+    backfill_seconds : int
+        If > 0, ask the server to replay packets from that many seconds
+        before now before transitioning to live streaming, so the viewer
+        opens with recent history already drawn. On reconnect after a
+        network blip we skip backfill — we want live data back ASAP, not a
+        second copy of the same history.
+    """
+    net, sta, loc, cha = nslc
+    loc_field = loc if loc else "  "  # two spaces for blank location
+    multiselect = f"{net}_{sta}:{loc_field}{cha}"
+
+    initial_begin_time = None
+    if backfill_seconds > 0:
+        initial_begin_time = UTCDateTime() - backfill_seconds
 
     def worker():
-        client = create_client(server, on_data=on_data)
-        client.select_stream(net, sta, cha)
-        client.run()
+        begin_time = initial_begin_time
+        reconnect_wait = 10.0
+        while True:
+            try:
+                client = _ViewerBufferClient(buffer)
+                client.slconn.set_sl_address(server)
+                client.multiselect = multiselect
+                client.begin_time = begin_time
+                client.initialize()
+                client.run()
+                return  # clean exit
+            except Exception as e:
+                print(f"SeedLink worker error: {e}. "
+                      f"Reconnecting in {reconnect_wait:.0f}s...")
+                begin_time = None  # do not re-request backfill on reconnect
+                time.sleep(reconnect_wait)
 
     t = threading.Thread(target=worker, daemon=True)
     t.start()

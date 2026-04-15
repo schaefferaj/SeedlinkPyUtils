@@ -57,6 +57,96 @@ def set_tk_window_bg(fig, color):
         pass
 
 
+def create_filter_dropdown(fig, options, active, on_change, theme):
+    """Create a native "Filter:" dropdown above the matplotlib canvas.
+
+    Dispatches to a Tk (TkAgg) or Qt (QtAgg / PyQt5/6 / PySide2/6) backend
+    helper based on the running matplotlib backend, and returns the created
+    widget for lifetime management. Returns ``None`` when the backend is
+    neither Tk nor Qt — callers should then fall back to an in-figure
+    `RadioButtons` strip.
+    """
+    backend = matplotlib.get_backend().lower()
+    if "tk" in backend:
+        return _create_filter_dropdown_tk(fig, options, active, on_change, theme)
+    if "qt" in backend:
+        return _create_filter_dropdown_qt(fig, options, active, on_change, theme)
+    return None
+
+
+def _create_filter_dropdown_tk(fig, options, active, on_change, theme):
+    """Tk backend: pack a ttk.Combobox strip above the canvas."""
+    try:
+        import tkinter as tk
+        from tkinter import ttk
+    except Exception:
+        return None
+
+    mgr = fig.canvas.manager
+    window = getattr(mgr, "window", None)
+    if window is None or not isinstance(window, (tk.Tk, tk.Toplevel)):
+        return None
+    try:
+        canvas_widget = fig.canvas.get_tk_widget()
+    except Exception:
+        return None
+
+    # Pack the filter strip above the canvas. `before=canvas_widget` slots us
+    # between the matplotlib toolbar (packed first, at the top) and the
+    # canvas (packed fill="both", expand=True just below it).
+    frame = tk.Frame(window, bg=theme["bg"])
+    frame.pack(before=canvas_widget, side="top", fill="x")
+
+    tk.Label(frame, text="Filter:", bg=theme["bg"], fg=theme["fg"],
+             font=("TkDefaultFont", 9, "bold"),
+             padx=8, pady=2).pack(side="left")
+
+    var = tk.StringVar(value=options[active])
+    combo = ttk.Combobox(frame, textvariable=var, values=options,
+                         state="readonly", width=14)
+    combo.pack(side="left", padx=4, pady=2)
+
+    combo.bind("<<ComboboxSelected>>", lambda _e: on_change(var.get()))
+    frame._combo = combo
+    return frame
+
+
+def _create_filter_dropdown_qt(fig, options, active, on_change, theme):
+    """Qt backend: add a QToolBar with a QComboBox to the top of the window."""
+    try:
+        from matplotlib.backends.qt_compat import QtCore, QtWidgets
+    except Exception:
+        return None
+
+    mgr = fig.canvas.manager
+    window = getattr(mgr, "window", None)
+    if window is None or not hasattr(window, "addToolBar"):
+        return None
+
+    toolbar = QtWidgets.QToolBar("Filter", window)
+    toolbar.setMovable(False)
+
+    label = QtWidgets.QLabel("  Filter: ")
+    # Light text on dark bg when dark-mode theme is active; leave default
+    # otherwise so we inherit the desktop's native look.
+    if theme.get("bg", "").lower() in ("#1a1a1a",) or theme.get("fg", "").lower() != "black":
+        label.setStyleSheet(
+            f"color: {theme['fg']}; background-color: {theme['bg']};"
+        )
+    toolbar.addWidget(label)
+
+    combo = QtWidgets.QComboBox()
+    combo.addItems(options)
+    combo.setCurrentIndex(active)
+    combo.currentTextChanged.connect(on_change)
+    toolbar.addWidget(combo)
+
+    window.addToolBar(QtCore.Qt.TopToolBarArea, toolbar)
+    # Stash on the toolbar so the combobox isn't garbage-collected.
+    toolbar._combo = combo
+    return toolbar
+
+
 def go_fullscreen(fig):
     """Make the figure window fullscreen on Linux/macOS/Windows.
 

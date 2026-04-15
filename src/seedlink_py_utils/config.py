@@ -25,26 +25,34 @@ THEMES = {
 
 # Presets ordered low-frequency → high-frequency so the radio-button row
 # reads left-to-right from teleseismic long-period to local high-freq.
+# Names for `surface`, `tele-p`, `regional`, and `local` match the picker
+# preset names in picker.py, and each such filter's band matches the
+# picker's detection band — so the viewer category and the picker category
+# always mean the same thing.
 FILTERS = {
-    "None":         None,
-    "BP 0.02–0.1 Hz": ("bandpass", {"freqmin": 0.02, "freqmax": 0.1, "corners": 4, "zerophase": True}),
-    "BP 0.5–2 Hz":  ("bandpass", {"freqmin": 0.5,  "freqmax": 2.0,  "corners": 4, "zerophase": True}),
-    "BP 1–10 Hz":   ("bandpass", {"freqmin": 1.0,  "freqmax": 10.0, "corners": 4, "zerophase": True}),
-    "BP 1–25 Hz":   ("bandpass", {"freqmin": 1.0,  "freqmax": 25.0, "corners": 4, "zerophase": True}),
-    "BP 3–25 Hz":   ("bandpass", {"freqmin": 3.0,  "freqmax": 25.0, "corners": 4, "zerophase": True}),
-    "HP 1 Hz":      ("highpass", {"freq": 1.0, "corners": 4, "zerophase": True}),
-    "HP 3 Hz":      ("highpass", {"freq": 3.0, "corners": 4, "zerophase": True}),
-    "HP 5 Hz":      ("highpass", {"freq": 5.0, "corners": 4, "zerophase": True}),
+    "None":           None,
+    "BP 0.02–0.1 Hz": ("bandpass", {"freqmin": 0.02, "freqmax": 0.1,  "corners": 4, "zerophase": True}),
+    "BP 0.5–2 Hz":    ("bandpass", {"freqmin": 0.5,  "freqmax": 2.0,  "corners": 4, "zerophase": True}),
+    "BP 1–10 Hz":     ("bandpass", {"freqmin": 1.0,  "freqmax": 10.0, "corners": 4, "zerophase": True}),
+    "BP 1–25 Hz":     ("bandpass", {"freqmin": 1.0,  "freqmax": 25.0, "corners": 4, "zerophase": True}),
+    "BP 2–10 Hz":     ("bandpass", {"freqmin": 2.0,  "freqmax": 10.0, "corners": 4, "zerophase": True}),
+    "BP 3–25 Hz":     ("bandpass", {"freqmin": 3.0,  "freqmax": 25.0, "corners": 4, "zerophase": True}),
+    "HP 1 Hz":        ("highpass", {"freq": 1.0, "corners": 4, "zerophase": True}),
+    "HP 3 Hz":        ("highpass", {"freq": 3.0, "corners": 4, "zerophase": True}),
+    "HP 5 Hz":        ("highpass", {"freq": 5.0, "corners": 4, "zerophase": True}),
 }
 
 # ASCII, shell-friendly aliases for the CLI's --filter option. Each maps to a
-# canonical FILTERS key. Keep in sync with FILTERS when adding presets.
+# canonical FILTERS key. Keep in sync with FILTERS when adding presets. The
+# `surface`, `tele-p`, `regional`, and `local` aliases line up with the
+# picker preset names so one word means one band in both contexts.
 FILTER_CLI_ALIASES = {
     "none":     "None",
     "surface":  "BP 0.02–0.1 Hz",
     "tele-p":   "BP 0.5–2 Hz",
     "regional": "BP 1–10 Hz",
     "bp1-25":   "BP 1–25 Hz",
+    "local":    "BP 2–10 Hz",
     "bp3-25":   "BP 3–25 Hz",
     "hp1":      "HP 1 Hz",
     "hp3":      "HP 3 Hz",
@@ -78,10 +86,25 @@ class ViewerConfig:
     fullscreen: bool = False
     dark_mode: bool = False
 
+    # On startup, ask the server to replay buffer_seconds of history so the
+    # display opens pre-populated. The server's ring buffer typically covers
+    # hours to a day, so this is usually within reach; if not, the backfill
+    # is silently partial. Set to False for live-only (empty-at-start) mode.
+    backfill_on_start: bool = True
+
     # When set to a key in FILTERS, the viewer locks the waveform filter to
     # that preset and hides the radio-button strip. When None (default), the
     # viewer shows the radio buttons for interactive switching.
     filter_name: Optional[str] = None
+
+    # STA/LTA picker configuration. When picker_preset is None the picker is
+    # disabled and no CFT strip is drawn. When set, picker_{sta,lta,thr_on,
+    # thr_off} individually override the preset's values if non-None.
+    picker_preset: Optional[str] = None
+    picker_sta: Optional[float] = None
+    picker_lta: Optional[float] = None
+    picker_thr_on: Optional[float] = None
+    picker_thr_off: Optional[float] = None
 
     def __post_init__(self):
         if self.noverlap >= self.nperseg:

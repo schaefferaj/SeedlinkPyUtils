@@ -14,10 +14,16 @@ built on [ObsPy](https://docs.obspy.org). Provides:
 
 ### Viewer (`seedlink-py-viewer`)
 - Live waveform + synchronised spectrogram in a rolling time window
+- Startup backfill from the server's ring buffer so the display opens with
+  recent history already drawn (disable with `--no-backfill` for a live-only
+  start)
 - Automatic instrument response removal via FDSN or a local StationXML file
   (falls back to raw counts if unavailable)
 - Interactive filter selector (bandpasses and highpasses) applied to the waveform only,
   leaving the spectrogram broadband
+- Optional STA/LTA picker with `local` / `regional` / `tele-p` presets —
+  adds a CFT strip above the waveform and red vertical markers at trigger
+  onsets; STA, LTA, and trigger thresholds individually overridable
 - Light and dark themes
 - Cross-platform fullscreen mode (Linux / macOS / Windows / WSL) with a TkAgg-targeted
   fallback for stubborn window managers
@@ -97,6 +103,12 @@ seedlink-py-viewer PQ.DAOB..HHZ --filter hp3
 # Teleseismic P-wave view on a broadband — --pre-filt is auto-lowered for
 # 'surface' and 'tele-p' so the response removal doesn't mute the band
 seedlink-py-viewer IU.ANMO.00.BHZ --filter tele-p
+
+# STA/LTA picker with the teleseismic-P preset
+seedlink-py-viewer IU.ANMO.00.BHZ --picker tele-p
+
+# Picker with manual STA/LTA override on top of a preset
+seedlink-py-viewer AM.RA382.00.EHZ --picker local --sta 0.3 --lta 8
 
 # Point at a different SeedLink server and FDSN for metadata
 seedlink-py-viewer IU.ANMO.00.BHZ \
@@ -228,6 +240,7 @@ cfg = ViewerConfig(
     fdsn_server="http://seiscomp.hakai.org/fdsnws",
     buffer_seconds=300,
     dark_mode=True,
+    picker_preset="local",     # optional — enables STA/LTA picker
 )
 run_viewer(cfg)
 
@@ -264,6 +277,7 @@ for s in streams:
 | `--no-cache` | off | Skip the on-disk inventory cache |
 | `--buffer`, `-b` | `300` | Rolling buffer length (seconds) |
 | `--redraw-ms` | `1000` | Redraw interval (ms) |
+| `--no-backfill` | off (i.e. backfill on) | Start empty instead of requesting `--buffer` seconds of history |
 | `--nperseg` | `512` | FFT window length (samples) |
 | `--noverlap` | `400` | FFT window overlap (samples) |
 | `--fmin` / `--fmax` | `0.5` / `50.0` | Spectrogram frequency range (Hz) |
@@ -272,6 +286,9 @@ for s in streams:
 | `--water-level` | `60` | Deconvolution water level |
 | `--pre-filt` | `0.05,0.1,45,50` | Response pre-filter corners |
 | `--filter` | — | Lock to a preset filter and hide the radio buttons (see *Filter presets* below). Omit for the interactive selector. |
+| `--picker` | — | Enable the STA/LTA picker with one of `local` / `regional` / `tele-p` (see *Picker presets* below). |
+| `--sta` / `--lta` | (preset) | Override STA / LTA window (seconds). Requires `--picker`. |
+| `--trigger-on` / `--trigger-off` | (preset) | Override STA/LTA ratio thresholds. Requires `--picker`. |
 | `--fullscreen`, `-f` | off | Fullscreen, no toolbar |
 | `--dark-mode`, `-d` | off | Dark colour theme |
 
@@ -297,6 +314,7 @@ name is what appears on the radio-button strip in interactive mode.
 
 | Alias | Preset | Use case |
 |---|---|---|
+| `local` | BP 2–10 Hz | Standard local-event band (matches the `local` picker) |
 | `bp1-25` | BP 1–25 Hz | Local events, wideband view |
 | `bp3-25` | BP 3–25 Hz | Local events, high-frequency emphasis |
 | `hp1` | HP 1 Hz | Remove microseism and DC |
@@ -315,6 +333,32 @@ name is what appears on the radio-button strip in interactive mode.
 > `--pre-filt` to `0.005,0.01,45,50` when you pick `surface` or `tele-p`, and
 > prints a note on startup. Pass `--pre-filt` explicitly to override (your
 > value always wins).
+
+### Picker presets
+
+When `--picker PRESET` is given, the viewer runs a recursive STA/LTA on every
+redraw tick and marks trigger onsets as red vertical lines on the waveform.
+A small CFT strip appears above the waveform showing the STA/LTA ratio,
+with a red dashed line at the "trigger on" threshold and an amber dotted
+line at "trigger off". Each preset carries its own detection filter; this is
+independent of `--filter` (which only affects what you see on the waveform
+panel) so the picker behaves consistently regardless of display settings.
+
+| Preset | STA | LTA | Trigger on / off | Detection filter | Tuned for |
+|---|---|---|---|---|---|
+| `local` | 0.5 s | 10 s | 3.5 / 1.5 | BP 2–10 Hz | Local events, short-period instruments |
+| `regional` | 2 s | 30 s | 3.0 / 1.5 | BP 1–10 Hz | Regional earthquakes (Pg/Pn/Sg/Sn) |
+| `tele-p` | 5 s | 120 s | 2.5 / 1.5 | BP 0.5–2 Hz | Teleseismic P on broadbands |
+
+Each picker preset name matches a `--filter` alias of the same name with the
+same band — `--picker regional` and `--filter regional` both work on BP 1–10 Hz,
+`--picker tele-p` and `--filter tele-p` both on BP 0.5–2 Hz, and so on. Pick
+them together for a coherent workflow, or use `--filter` to look at a different
+band than the picker triggers on.
+
+`--sta`, `--lta`, `--trigger-on`, `--trigger-off` override the corresponding
+field of whichever preset you chose; the detection filter is preset-locked
+(pick the closest preset for your target band).
 
 ## Archiver configuration reference
 
