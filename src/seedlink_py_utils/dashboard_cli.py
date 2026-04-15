@@ -38,6 +38,10 @@ def build_parser():
             "\n"
             "  seedlink-py-dashboard --station DAOB                   # one station across channels\n"
             "\n"
+            "  seedlink-py-dashboard --channel EHZ                    # verticals only — one row/station\n"
+            "\n"
+            "  seedlink-py-dashboard -n AM -c 'HH?'                   # wildcards in the channel filter\n"
+            "\n"
             "  seedlink-py-dashboard --once                           # single snapshot (scriptable)\n"
             "\n"
             "  seedlink-py-dashboard --ok-threshold 30 \\\n"
@@ -73,6 +77,13 @@ def build_parser():
                         help="Filter by network code (exact match, case-insensitive).")
     g_filt.add_argument("--station", "-S", default=None,
                         help="Filter by station code (exact match, case-insensitive).")
+    g_filt.add_argument("--channel", "-c", default=None, metavar="CHA",
+                        help="Filter by channel code. Supports SeedLink-style\n"
+                             "wildcards (? and *), case-insensitive. Examples:\n"
+                             "  EHZ    one row per station for Shake verticals\n"
+                             "  HH?    all HH-band channels\n"
+                             "  '*Z'   all verticals regardless of band code\n"
+                             "Quote the pattern in shells that glob * / ?.")
 
     g_out = p.add_argument_group("Output")
     g_out.add_argument("--no-color", dest="color", action="store_false",
@@ -98,6 +109,7 @@ def main(argv=None):
         stale_threshold=args.stale_threshold,
         network=args.network,
         station=args.station,
+        channel=args.channel,
         color=args.color,
         once=args.once,
         timeout=args.timeout,
