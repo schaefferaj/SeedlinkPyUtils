@@ -13,6 +13,7 @@ them.
 """
 
 import dataclasses
+import fnmatch
 import sys
 import time
 from collections import Counter
@@ -51,8 +52,10 @@ class DashboardConfig:
     interval: float = 30.0           # poll period, seconds
     ok_threshold: float = 60.0       # latency < this → OK
     stale_threshold: float = 600.0   # latency > this → STALE; between = LAG
-    network: Optional[str] = None    # client-side NET filter
-    station: Optional[str] = None    # client-side STA filter
+    network: Optional[str] = None    # client-side NET filter (exact match)
+    station: Optional[str] = None    # client-side STA filter (exact match)
+    channel: Optional[str] = None    # client-side CHA filter; ? / * wildcards
+                                     # (e.g. 'EHZ', 'HH?', '*Z')
     color: bool = True               # emit ANSI colour escapes
     once: bool = False               # run one poll and exit (no screen clear)
     timeout: float = 30.0            # per-poll socket timeout, seconds
@@ -95,6 +98,22 @@ def _parse_end_time(s: str) -> Optional[UTCDateTime]:
         return UTCDateTime(s)
     except Exception:
         return None
+
+
+def filter_by_channel(records: list, pattern: Optional[str]) -> list:
+    """Filter INFO=STREAMS records by channel code, with SeedLink-style
+    ``?`` / ``*`` wildcards. Case-insensitive, matching the semantics of
+    the existing ``filter_records`` (NET/STA).
+
+    ``pattern=None`` or empty is a no-op. Typical uses:
+    ``'EHZ'`` → exact (collapses a Shake network to one row per station);
+    ``'HH?'`` → all HH-band channels; ``'*Z'`` → all verticals.
+    """
+    if not pattern:
+        return list(records)
+    up = pattern.upper()
+    return [r for r in records
+            if fnmatch.fnmatchcase(r.get("channel", "").upper(), up)]
 
 
 def _fmt_latency(latency_s: Optional[float]) -> str:
@@ -244,6 +263,8 @@ def run_dashboard(cfg: DashboardConfig) -> None:
                     records = filter_records(
                         records, network=cfg.network, station=cfg.station,
                     )
+                if cfg.channel:
+                    records = filter_by_channel(records, cfg.channel)
                 records.sort(key=_sort_key)
                 now = UTCDateTime()
                 rows = compute_rows(records, now, cfg)
