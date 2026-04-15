@@ -26,6 +26,7 @@ built on [ObsPy](https://docs.obspy.org). Provides:
 - Robust `SLClient`-based connection with state file for resume-on-restart — no data
   loss across short outages if the server still has it buffered
 - Multiple streams per invocation, with SeedLink wildcards (`?`, `*`) in LOC and CHA
+  natively, and in NET/STA via `--expand-wildcards` (one extra INFO=STREAMS query)
 - Writes standard SDS layout: one file per day per channel, appended in real time
 - Writes raw miniSEED records byte-identically (no round-trip through numpy)
 - Automatic reconnection with configurable backoff
@@ -41,15 +42,26 @@ built on [ObsPy](https://docs.obspy.org). Provides:
 
 ### Conda (recommended)
 
+Two steps — create the environment with the scientific stack from `conda-forge`,
+then install this package into it yourself so you choose between a regular or
+editable install:
+
 ```bash
 git clone https://github.com/schaefferaj/SeedlinkPyUtils.git
 cd SeedlinkPyUtils
+
+# 1. Create and activate the environment (scientific dependencies only)
 conda env create -f environment.yml
 conda activate seedlink-py-utils
+
+# 2. Install the package itself
+pip install .          # regular install (pinned snapshot of the current tree)
+# or
+pip install -e .       # editable install — code changes take effect on next run
 ```
 
-This installs all scientific dependencies from `conda-forge` and then does a
-pip editable install of the package itself.
+The editable mode is what you want if you're hacking on the package; the regular
+install is the right default for a production machine.
 
 ### Plain pip
 
@@ -117,11 +129,19 @@ seedlink-py-archiver AM.RA382..EHZ \
     --archive /data/sds \
     --begin-time 2026-04-14T12:00:00 \
     --end-time   2026-04-14T13:00:00
+
+# Subscribe to every station in the AM network (single-quote to stop the shell
+# from globbing the asterisk before argparse sees it)
+seedlink-py-archiver 'AM.*..EH?' --archive /data/sds --expand-wildcards
 ```
 
 **Stream syntax.** `NET.STA.LOC.CHA`, with `?` and `*` wildcards allowed in LOC and CHA
-(SeedLink's native support). Empty LOC is written as two dots (e.g. `PQ.DAOB..HHZ`).
-Wildcards in NET or STA are not supported by SeedLink — list them explicitly.
+natively (SeedLink's own multiselect). Empty LOC is written as two dots (e.g.
+`PQ.DAOB..HHZ`). Wildcards in NET or STA are *not* part of the SeedLink protocol —
+the `--expand-wildcards` flag works around this by issuing a one-shot `INFO=STREAMS`
+query at startup and substituting the matching explicit station list before
+subscribing. Quote any wildcard spec on the command line so the shell doesn't
+expand it as a filename glob.
 
 **SDS layout.** The archive is organised as:
 
@@ -259,6 +279,7 @@ for s in streams:
 | `--end-time` | — | Replay window end (ISO 8601) |
 | `--reconnect-wait` | `10` | Seconds between reconnect attempts |
 | `--max-reconnects` | unlimited | Cap on reconnect attempts |
+| `--expand-wildcards` | off | Expand `?` / `*` in NET/STA via `INFO=STREAMS` at startup |
 | `--log-file` | — | Path to rotating log file (10 MB × 5 backups) |
 | `--log-level` | `INFO` | DEBUG / INFO / WARNING / ERROR |
 

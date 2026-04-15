@@ -30,7 +30,7 @@ standard FDSN/SeedLink servers like IRIS.
 ```
 SeedlinkPyUtils/
 ├── pyproject.toml              # packaging; defines three console scripts
-├── environment.yml             # conda env with editable pip install of self
+├── environment.yml             # conda env with the scientific stack (user does `pip install [-e] .` after)
 ├── requirements.txt            # for plain-pip users
 ├── README.md
 ├── LICENSE                     # MIT
@@ -108,10 +108,19 @@ accidentally importing from the working directory instead of the installed packa
   non-trusted clients. An empty result here is normal, not a bug.
 
 ### Multiselect / wildcards
-SeedLink natively supports `?` and `*` wildcards in **LOC and CHA only**. Wildcards in
-NET or STA are not supported by the protocol — `build_multiselect()` raises a clear
-ValueError if it sees them. To expand wildcards across stations, query the server's
-`INFO=STREAMS` separately and pass an explicit list.
+SeedLink natively supports `?` and `*` wildcards in **LOC and CHA only** — these are
+sent verbatim in the `SELECT` command. Wildcards in NET or STA are not part of the
+protocol (the `STATION` command takes a literal `NET STA` pair), so
+`build_multiselect()` raises a clear ValueError if it sees one.
+
+To work around the protocol limit, the archiver supports `--expand-wildcards`
+(library: `run_archiver(expand_wildcards=True)`), which calls
+`info.expand_stream_wildcards()`. That helper issues one `INFO=STREAMS` query at
+startup, matches each wildcarded `NET.STA` against the server's reply with
+`fnmatch.fnmatchcase`, and substitutes the explicit station list before
+`build_multiselect()` runs. LOC/CHA wildcards in the same spec are preserved (still
+handled natively by SeedLink). A wildcard that matches zero stations raises rather
+than silently subscribing to nothing.
 
 ## Critical gotchas
 
@@ -149,6 +158,27 @@ issues, **always `rm -f inv_*.xml` first** or pass `--no-cache`.
 
 Raspberry Shake (AM network) stations sometimes use empty LOC even when the user calls
 them "00" — if metadata fetch returns 404 for `location=00`, try empty location.
+
+### ObsPy archiver API landmines
+
+All documented in detail in MEMORY.md, but this is the short list so you
+don't re-fall into them when editing `archiver.py`:
+
+- **`SLPacket.TYPE_SLDATA` does not exist** — the `packet_handler` gate
+  should filter out INFO packets (`TYPE_SLINF`, `TYPE_SLINFT`) and treat
+  everything else as data.
+- **`SLPacket.get_raw_data()` does not exist** — raw 512-byte miniSEED
+  record is the attribute `slpack.msrecord`.
+- **`SLClient.__init__(loglevel=...)` is deprecated and ignored** in ObsPy
+  ≥1.4 — pass nothing, configure logging via `logging_setup.py`.
+- **`slconn.save_state(statefile)` and `recover_state(statefile)` ignore
+  their parameter** — they both read `self.statefile`. Workaround: set
+  `client.slconn.statefile = state_file` once before using the connection.
+- **Call `client.initialize()` BEFORE `recover_state`.** `recover_state`
+  matches the state file against `slconn.streams`, which stays empty until
+  `initialize()` parses `multiselect`. Wrong order → silent "no matching
+  streams" → archiver starts from the live tip and the state file is
+  effectively ignored.
 
 ### Matplotlib RadioButtons API change at 3.7
 Pre-3.7: per-button `Circle` patches in `self.circles`.

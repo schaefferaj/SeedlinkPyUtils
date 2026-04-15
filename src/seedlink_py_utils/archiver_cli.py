@@ -27,10 +27,12 @@ def build_parser():
             "      --state-file /var/lib/slarchiver/state.txt \\\n"
             "      --log-file /var/log/slarchiver.log\n"
             "\n"
+            "  seedlink-py-archiver 'AM.*..EH?' --archive /data/sds --expand-wildcards\n"
+            "\n"
             "Stream syntax: NET.STA.LOC.CHA, with ? / * wildcards allowed in LOC and CHA\n"
-            "only (SeedLink's native wildcard support). Empty LOC is written as two dots,\n"
-            "e.g. PQ.DAOB..HHZ. Wildcards in NET or STA are not supported — list them\n"
-            "explicitly."
+            "natively. Wildcards in NET or STA require --expand-wildcards (one extra\n"
+            "INFO=STREAMS query at startup). Empty LOC is written as two dots,\n"
+            "e.g. PQ.DAOB..HHZ."
         ),
     )
 
@@ -57,6 +59,12 @@ def build_parser():
                    help="Seconds to wait between reconnection attempts.")
     p.add_argument("--max-reconnects", type=int, default=None,
                    help="Maximum number of reconnect attempts (default: unlimited).")
+
+    # Wildcards
+    p.add_argument("--expand-wildcards", action="store_true",
+                   help="Expand ? / * in NET and STA fields by querying the "
+                        "server's INFO=STREAMS at startup. Quote the spec to "
+                        "stop the shell from globbing it (e.g. 'AM.*..EH?').")
 
     # Logging
     p.add_argument("--log-file",
@@ -86,6 +94,7 @@ def main(argv=None):
         end_time=args.end_time,
         reconnect_wait=args.reconnect_wait,
         max_reconnects=args.max_reconnects,
+        expand_wildcards=args.expand_wildcards,
     )
 
 
