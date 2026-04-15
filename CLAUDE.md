@@ -153,6 +153,20 @@ accidentally importing from the working directory instead of the installed packa
   Windows rejects those characters in filenames and the mc-viewer routinely
   passes `HH?` through. The FDSN query itself still uses the original
   wildcarded CHA (FDSN handles it natively).
+- **Internal buffer is padded by `1 / pre_filt[0]` when response removal
+  is active.** Constant-Q deconvolution with a pre_filt cosine taper
+  produces a time-domain ringing artifact on the low-frequency side whose
+  length scales with `1/f1`. Rather than show that ramp on every panel,
+  the mc-viewer allocates `TraceBuffer(buffer_seconds + ceil(1/f1))` and
+  requests backfill for the same length, while keeping
+  `set_xlim(-buffer_seconds, 0)` — so the tapered region silently falls
+  off the left edge. This is conditional on `inventory is not None`
+  (counts mode applies no taper, no padding needed) and on `pre_filt[0] > 0`
+  (degenerate guard). The picker's `cutoff = now - buffer_seconds` already
+  drops picks from the padded region, so padding also gives STA/LTA a
+  longer clean lead-in for free. Only the mc-viewer does this currently;
+  the single-channel viewer has the same taper issue but has not been
+  ported yet (would be a one-liner if asked for).
 
 ### Archiver
 - **SLClient with state file:** the state file records the last sequence number
