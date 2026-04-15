@@ -252,6 +252,64 @@ def _has_wildcard(s: str) -> bool:
     return "?" in s or "*" in s
 
 
+def expand_all_wildcards(server: str,
+                         streams: Iterable[str],
+                         timeout: float = 30.0) -> List[str]:
+    """Expand wildcards in ALL four NSLC fields via one ``INFO=STREAMS`` query.
+
+    Unlike :func:`expand_stream_wildcards` (which expands NET/STA only and
+    leaves LOC/CHA for SeedLink's native wildcard support), this one resolves
+    every pattern field into concrete NSLCs by matching against the server's
+    full stream list. Use it when the caller needs to know the list of matched
+    streams up front (e.g. the mc-viewer allocates one waveform panel per
+    stream, so wildcards have to be expanded before the figure is built).
+
+    Returns a list of fully-concrete ``NET.STA.LOC.CHA`` strings, deduplicated
+    and sorted. Raises ``ValueError`` if any wildcarded spec matches zero
+    streams on the server.
+    """
+    streams = list(streams)
+    any_wild = any(
+        any(_has_wildcard(x) for x in s.split("."))
+        for s in streams if s.count(".") == 3
+    )
+    if not any_wild:
+        return streams
+
+    xml = query_info(server, level="STREAMS", timeout=timeout)
+    available = parse_streams(xml)
+
+    out: List[str] = []
+    for spec in streams:
+        bits = spec.split(".")
+        if len(bits) != 4:
+            raise ValueError(
+                f"stream must be NET.STA.LOC.CHA (4 dot-separated fields), got {spec!r}"
+            )
+        net, sta, loc, cha = bits
+
+        if not any(_has_wildcard(f) for f in (net, sta, loc, cha)):
+            out.append(spec)
+            continue
+
+        matched = {
+            (r.get("network", ""), r.get("station", ""),
+             r.get("location", ""), r.get("channel", ""))
+            for r in available
+            if fnmatch.fnmatchcase(r.get("network", ""), net)
+            and fnmatch.fnmatchcase(r.get("station", ""), sta)
+            and fnmatch.fnmatchcase(r.get("location", ""), loc)
+            and fnmatch.fnmatchcase(r.get("channel", ""), cha)
+        }
+        if not matched:
+            raise ValueError(
+                f"No streams on {server} match {spec!r}"
+            )
+        for nslc in sorted(matched):
+            out.append(".".join(nslc))
+    return out
+
+
 def expand_stream_wildcards(server: str,
                             streams: Iterable[str],
                             timeout: float = 30.0) -> List[str]:

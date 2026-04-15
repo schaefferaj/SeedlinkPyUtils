@@ -10,6 +10,10 @@ It currently exposes two CLIs:
 
 - **`seedlink-py-viewer`** — interactive matplotlib viewer with live waveform + spectrogram,
   filter selector, dark mode, and cross-platform fullscreen.
+- **`seedlink-py-mc-viewer`** — multi-channel variant (stacked waveform panels, no
+  spectrogram) for 3-component viewing. Same filter and picker options as the
+  single-channel viewer; picks are drawn across every panel with the picker
+  running on the vertical component.
 - **`seedlink-py-archiver`** — long-running daemon that subscribes to one or more
   SeedLink streams and writes them into an SDS miniSEED archive. Uses ObsPy's
   `SLClient` with a state file for resume-on-restart.
@@ -29,7 +33,7 @@ standard FDSN/SeedLink servers like IRIS.
 
 ```
 SeedlinkPyUtils/
-├── pyproject.toml              # packaging; defines three console scripts
+├── pyproject.toml              # packaging; defines four console scripts
 ├── environment.yml             # conda env with the scientific stack (user does `pip install [-e] .` after)
 ├── requirements.txt            # for plain-pip users
 ├── README.md
@@ -42,7 +46,9 @@ SeedlinkPyUtils/
     ├── processing.py           # inventory loading, response removal, filters
     ├── gui.py                  # HRadioButtons, theme helpers, fullscreen
     ├── viewer.py               # run_viewer() — wires the viewer together
+    ├── viewer_mc.py            # run_viewer_mc() — multi-channel variant
     ├── cli.py                  # viewer CLI (seedlink-py-viewer)
+    ├── cli_mc.py               # mc-viewer CLI (seedlink-py-mc-viewer)
     ├── sds.py                  # SDS path construction
     ├── archiver.py             # SDSArchiver (subclass of SLClient), run_archiver()
     ├── archiver_cli.py         # archiver CLI (seedlink-py-archiver)
@@ -110,6 +116,43 @@ accidentally importing from the working directory instead of the installed packa
   Tk on Linux often silently ignores the first `-fullscreen` request; the fix retries
   via `w.after(...)` and falls back to `overrideredirect(True)` + manual sizing for
   stubborn WMs (i3, sway, GNOME on Wayland with strict policies).
+
+### Multi-channel / multi-station viewer
+- **One panel per resolved NSLC.** Streams are explicit (positional args)
+  rather than discovered. Wildcards in any NSLC field auto-expand at
+  startup via `info.expand_all_wildcards` (one-shot `INFO=STREAMS` query,
+  fnmatch against the server's stream list), so by the time
+  `run_viewer_mc` runs, every NSLC in `cfg.nslcs` is concrete. This is a
+  stronger expansion than the archiver's `info.expand_stream_wildcards`,
+  which expands NET/STA only and leaves LOC/CHA for SeedLink's native
+  wildcards — the mc-viewer needs per-channel concreteness up-front so it
+  can pre-allocate one panel per match.
+- **Per-panel picker state.** Each panel carries its own `picks` list and
+  `pick_artists`. This matters for multi-station views — a trigger on
+  station A should not appear as a marker on station B's panel at the same
+  absolute time, because each panel's x-axis is "seconds before now" and
+  the onset times are station-specific. The picker preset (STA/LTA window,
+  thresholds, detection band) is shared across panels; only the pick list
+  is per-panel.
+- **No CFT strip.** Deliberate: the value of this view is cross-panel
+  visual correlation, and a single CFT strip wouldn't make sense with N
+  different triggers running. Picker preset + band are named in the
+  figure title instead.
+- **Inventory is merged across stations.** `processing.load_inventory_multi`
+  loads per unique (NET, STA) pair (reusing the per-station cache) and
+  combines them with ObsPy's `Inventory.__add__`. `remove_response(inv)`
+  on each Trace then matches by NSLC automatically, so one Inventory
+  object services every panel.
+- **Buffer lookups by full NSLC.** `TraceBuffer.latest_nslc(net, sta, loc,
+  cha)` selects the right trace when multiple stations share a channel code
+  (the old `latest(channel)` would return whichever station's trace came
+  first in the Stream). The mc-viewer always uses `latest_nslc`; the
+  single-channel viewer still uses `latest(channel)`.
+- **Inventory cache filename sanitisation.** `load_inventory` strips `?`
+  and `*` from the CHA field when constructing the cache filename, because
+  Windows rejects those characters in filenames and the mc-viewer routinely
+  passes `HH?` through. The FDSN query itself still uses the original
+  wildcarded CHA (FDSN handles it natively).
 
 ### Archiver
 - **SLClient with state file:** the state file records the last sequence number
