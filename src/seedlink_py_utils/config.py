@@ -32,6 +32,17 @@ FILTERS = {
     "HP 5 Hz":    ("highpass", {"freq": 5.0, "corners": 4, "zerophase": True}),
 }
 
+# ASCII, shell-friendly aliases for the CLI's --filter option. Each maps to a
+# canonical FILTERS key. Keep in sync with FILTERS when adding presets.
+FILTER_CLI_ALIASES = {
+    "none":   "None",
+    "bp1-25": "BP 1–25 Hz",
+    "bp3-25": "BP 3–25 Hz",
+    "hp1":    "HP 1 Hz",
+    "hp3":    "HP 3 Hz",
+    "hp5":    "HP 5 Hz",
+}
+
 
 @dataclass
 class ViewerConfig:
@@ -58,6 +69,11 @@ class ViewerConfig:
 
     fullscreen: bool = False
     dark_mode: bool = False
+
+    # When set to a key in FILTERS, the viewer locks the waveform filter to
+    # that preset and hides the radio-button strip. When None (default), the
+    # viewer shows the radio buttons for interactive switching.
+    filter_name: Optional[str] = None
 
     def __post_init__(self):
         if self.noverlap >= self.nperseg:

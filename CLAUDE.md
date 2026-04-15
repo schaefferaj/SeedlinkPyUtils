@@ -64,6 +64,11 @@ accidentally importing from the working directory instead of the installed packa
 - **Filter scope:** filters are applied **only to the waveform panel**. The spectrogram
   always uses the response-removed-but-unfiltered trace, so changing the filter selector
   doesn't change the spectrogram. This is intentional — the spectrogram is for context.
+- **Filter selection mode:** if `cfg.filter_name` (CLI: `--filter NAME`) is set, the
+  viewer hides the radio-button strip entirely and locks the waveform to that preset,
+  re-laying the gridspec as 2 rows instead of 3. CLI aliases are ASCII (`bp3-25`,
+  `hp3`, etc.) since the canonical `FILTERS` keys have spaces and an en-dash —
+  `FILTER_CLI_ALIASES` in `config.py` is the mapping.
 - **Response removal:** runs once per redraw on the latest buffer copy, output in m/s.
   Falls back to raw counts (with axis label updated) if no inventory is available.
 - **Fullscreen:** `gui.go_fullscreen()` is TkAgg-targeted with a Qt/Wx/macOS fallback.

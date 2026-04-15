@@ -33,48 +33,67 @@ def run_viewer(cfg: ViewerConfig):
     tracebuf = TraceBuffer(cfg.buffer_seconds)
     start_seedlink_worker(cfg.seedlink_server, cfg.nslc, tracebuf)
 
-    current_filter = {"name": "None"}
+    if cfg.filter_name is not None and cfg.filter_name not in FILTERS:
+        raise ValueError(
+            f"filter_name={cfg.filter_name!r} is not a known preset. "
+            f"Valid names: {list(FILTERS.keys())}"
+        )
+
+    # When a filter is locked via cfg.filter_name, skip the radio-button strip
+    # and fill the figure with just the waveform + spectrogram.
+    locked_filter = cfg.filter_name
+    current_filter = {"name": locked_filter if locked_filter else "None"}
+    radio = None
 
     fig = plt.figure(figsize=(14, 7.5), facecolor=theme["bg"])
-    gs = fig.add_gridspec(
-        3, 1, height_ratios=[0.08, 1, 1.3],
-        hspace=0.08,
-        left=0.06, right=0.99, top=0.96, bottom=0.07,
-    )
-    ax_radio = fig.add_subplot(gs[0, 0])
-    ax_wf = fig.add_subplot(gs[1, 0])
-    ax_sp = fig.add_subplot(gs[2, 0], sharex=ax_wf)
+    if locked_filter is None:
+        gs = fig.add_gridspec(
+            3, 1, height_ratios=[0.08, 1, 1.3],
+            hspace=0.08,
+            left=0.06, right=0.99, top=0.96, bottom=0.07,
+        )
+        ax_radio = fig.add_subplot(gs[0, 0])
+        ax_wf = fig.add_subplot(gs[1, 0])
+        ax_sp = fig.add_subplot(gs[2, 0], sharex=ax_wf)
 
-    # Radio strip
-    ax_radio.set_facecolor(theme["bg"])
-    for spine in ax_radio.spines.values():
-        spine.set_visible(False)
-    ax_radio.set_xticks([])
-    ax_radio.set_yticks([])
-    ax_radio.text(-0.005, 0.5, "Filter:", transform=ax_radio.transAxes,
-                  fontsize=10, va="center", ha="right", fontweight="bold",
-                  color=theme["fg"])
-    radio = HRadioButtons(ax_radio, list(FILTERS.keys()), active=0,
-                          activecolor=theme["accent"])
-    for label in radio.labels:
-        label.set_fontsize(9)
-        label.set_color(theme["fg"])
+        # Radio strip
+        ax_radio.set_facecolor(theme["bg"])
+        for spine in ax_radio.spines.values():
+            spine.set_visible(False)
+        ax_radio.set_xticks([])
+        ax_radio.set_yticks([])
+        ax_radio.text(-0.005, 0.5, "Filter:", transform=ax_radio.transAxes,
+                      fontsize=10, va="center", ha="right", fontweight="bold",
+                      color=theme["fg"])
+        radio = HRadioButtons(ax_radio, list(FILTERS.keys()), active=0,
+                              activecolor=theme["accent"])
+        for label in radio.labels:
+            label.set_fontsize(9)
+            label.set_color(theme["fg"])
 
-    def on_filter_change(label):
-        current_filter["name"] = label
-        print(f"Filter -> {label}")
+        def on_filter_change(label):
+            current_filter["name"] = label
+            print(f"Filter -> {label}")
 
-    radio.on_clicked(on_filter_change)
+        radio.on_clicked(on_filter_change)
+    else:
+        gs = fig.add_gridspec(
+            2, 1, height_ratios=[1, 1.3],
+            hspace=0.08,
+            left=0.06, right=0.99, top=0.94, bottom=0.07,
+        )
+        ax_wf = fig.add_subplot(gs[0, 0])
+        ax_sp = fig.add_subplot(gs[1, 0], sharex=ax_wf)
 
     # Waveform panel
     (line,) = ax_wf.plot([], [], lw=0.5, color=theme["trace"])
     units = "m/s" if inventory is not None else "counts"
     ax_wf.set_ylabel(units)
     loc_str = loc if loc else "--"
-    ax_wf.set_title(
-        f"{net}.{sta}.{loc_str}.{cha} — live from {cfg.seedlink_server}",
-        fontsize=10,
-    )
+    title = f"{net}.{sta}.{loc_str}.{cha} — live from {cfg.seedlink_server}"
+    if locked_filter:
+        title += f"   [filter: {locked_filter}]"
+    ax_wf.set_title(title, fontsize=10)
     ax_wf.grid(True, which="both", linestyle="--",
                alpha=theme["grid_alpha"], color=theme["grid"])
     ax_wf.tick_params(labelbottom=False)
@@ -149,7 +168,8 @@ def run_viewer(cfg: ViewerConfig):
             plt.close(fig)
     fig.canvas.mpl_connect("key_press_event", on_key)
 
-    fig._radio = radio
+    if radio is not None:
+        fig._radio = radio
     fig._ani = ani
 
     if cfg.fullscreen:

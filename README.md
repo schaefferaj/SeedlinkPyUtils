@@ -91,6 +91,9 @@ seedlink-py-viewer PQ.DAOB..HHZ
 # Dark mode, fullscreen (press Esc to exit)
 seedlink-py-viewer AM.RA382.00.EHZ --dark-mode --fullscreen
 
+# Lock to a preset filter — hides the radio-button strip
+seedlink-py-viewer PQ.DAOB..HHZ --filter hp3
+
 # Point at a different SeedLink server and FDSN for metadata
 seedlink-py-viewer IU.ANMO.00.BHZ \
     --server rtserve.iris.washington.edu:18000 \
@@ -264,6 +267,7 @@ for s in streams:
 | `--cmap` | `magma` | Matplotlib colormap |
 | `--water-level` | `60` | Deconvolution water level |
 | `--pre-filt` | `0.05,0.1,45,50` | Response pre-filter corners |
+| `--filter` | — | Lock to a preset filter (`none`, `bp1-25`, `bp3-25`, `hp1`, `hp3`, `hp5`); hides the radio buttons. Omit to keep the interactive selector. |
 | `--fullscreen`, `-f` | off | Fullscreen, no toolbar |
 | `--dark-mode`, `-d` | off | Dark colour theme |
 
