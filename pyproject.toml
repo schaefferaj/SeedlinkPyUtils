@@ -41,6 +41,7 @@ dev = [
 [project.scripts]
 seedlink-py-viewer = "seedlink_py_utils.cli:main"
 seedlink-py-archiver = "seedlink_py_utils.archiver_cli:main"
+seedlink-py-info = "seedlink_py_utils.info_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/schaefferaj/SeedlinkPyUtils"

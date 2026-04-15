@@ -13,6 +13,11 @@ It currently exposes two CLIs:
 - **`seedlink-py-archiver`** — long-running daemon that subscribes to one or more
   SeedLink streams and writes them into an SDS miniSEED archive. Uses ObsPy's
   `SLClient` with a state file for resume-on-restart.
+- **`seedlink-py-info`** — one-shot CLI that issues SeedLink INFO requests
+  (`-I/-L/-Q/-G/-C`, mirroring `slinktool`) and pretty-prints the result, with
+  optional JSON/XML output. Talks the SeedLink protocol directly over a TCP
+  socket (no ObsPy SLClient subclass needed for one-shot queries) and parses
+  the XML response with the stdlib `xml.etree.ElementTree`.
 
 Target users are seismologists and network operators (the author works at the Geological
 Survey of Canada). Primary deployment is against a SeisComP fdsnws/seedlink server at
@@ -24,14 +29,14 @@ standard FDSN/SeedLink servers like IRIS.
 
 ```
 SeedlinkPyUtils/
-├── pyproject.toml              # packaging; defines two console scripts
+├── pyproject.toml              # packaging; defines three console scripts
 ├── environment.yml             # conda env with editable pip install of self
 ├── requirements.txt            # for plain-pip users
 ├── README.md
 ├── LICENSE                     # MIT
 ├── .gitignore
 └── src/seedlink_py_utils/
-    ├── __init__.py             # exports run_viewer, run_archiver, ViewerConfig
+    ├── __init__.py             # exports run_viewer, run_archiver, query_info, ViewerConfig
     ├── config.py               # ViewerConfig dataclass, THEMES, FILTERS
     ├── buffer.py               # TraceBuffer + easyseedlink worker (viewer)
     ├── processing.py           # inventory loading, response removal, filters
@@ -41,6 +46,8 @@ SeedlinkPyUtils/
     ├── sds.py                  # SDS path construction
     ├── archiver.py             # SDSArchiver (subclass of SLClient), run_archiver()
     ├── archiver_cli.py         # archiver CLI (seedlink-py-archiver)
+    ├── info.py                 # query_info() + XML parsers for INFO responses
+    ├── info_cli.py             # info CLI (seedlink-py-info)
     └── logging_setup.py        # rotating file + console logger
 ```
 
@@ -78,6 +85,27 @@ accidentally importing from the working directory instead of the installed packa
   minute, which the server replays on next connect.
 - **Reconnect loop:** `run_archiver()` wraps `SLClient.run()` in a try/except with
   configurable backoff. State is recovered on each reconnect.
+
+### Info / discovery
+- **One-shot, not streaming:** `seedlink-py-info` opens a connection, sends an
+  INFO request, prints the parsed result, and exits. No daemon, no state file,
+  no long-lived worker thread.
+- **Talks the SeedLink wire protocol directly** (raw socket → `INFO LEVEL\r\n`
+  → read 520-byte packets until terminator → splice the data sections of the
+  miniSEED records back into one XML document). We do NOT use
+  `obspy.clients.seedlink.basic_client.Client.get_info()` — that method is a
+  metadata helper that takes FDSN-style `level='station'/'channel'/'response'`
+  arguments, not the SeedLink `INFO` protocol command. See the bug-fix section
+  in MEMORY.md.
+- **XML parsing is intentionally defensive:** SeisComP, IRIS ringserver, and
+  older SeedLink implementations don't all agree on attribute names (e.g.
+  `name=` vs `station=` on `<station>` elements, `seedname=` vs `channel=` on
+  `<stream>`). `info._attrib(elem, *names)` returns the first attribute that
+  exists, so adding support for a new server flavour is usually one extra name
+  in the alias list rather than a new code path.
+- **`-G` and `-C` are server-dependent.** Many SeisComP installs disable GAPS
+  reporting for performance, and most servers redact CONNECTIONS for
+  non-trusted clients. An empty result here is normal, not a bug.
 
 ### Multiselect / wildcards
 SeedLink natively supports `?` and `*` wildcards in **LOC and CHA only**. Wildcards in

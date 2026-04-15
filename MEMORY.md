@@ -19,6 +19,9 @@ network. Evolved through several iterations:
 6. Refactored monolithic script into installable `seedlink_py_utils` package
 7. Renamed package/repo to `SeedlinkPyUtils` (Python-specific naming)
 8. Added archiver as second tool (SLClient + SDS output)
+9. Added `seedlink-py-info` for INFO queries (slinktool-style flags,
+   `basic_client.Client.get_info` under the hood, defensive XML parsing
+   to handle SeisComP/ringserver schema differences)
 
 ## Key design decisions
 
@@ -110,6 +113,39 @@ i3/sway are the usual culprits.
 The `overrideredirect` fallback isn't true fullscreen (the WM doesn't know about it,
 so multi-monitor focus might behave oddly), but it's visually identical for this
 use case.
+
+### `basic_client.Client.get_info()` is NOT the SeedLink INFO command
+
+**Symptom:** Initial implementation of `seedlink-py-info` raised
+`Invalid option for 'level': 'STREAMS'` (and same for `STATIONS`, `ID`, …)
+on every query.
+
+**Root cause:** ObsPy has two unrelated APIs that both happen to be called
+"get info" for SeedLink:
+
+1. `obspy.clients.seedlink.basic_client.Client.get_info()` — a *metadata*
+   helper that takes FDSN-style `level='station' | 'channel' | 'response'`
+   arguments and (under the hood) builds a station list. It does NOT speak
+   the SeedLink protocol's `INFO` command.
+2. The actual SeedLink wire-protocol `INFO LEVEL` command (where LEVEL is
+   `ID`, `STATIONS`, `STREAMS`, `GAPS`, `CONNECTIONS`, etc.), which returns
+   a chain of 520-byte packets whose miniSEED data sections concatenate
+   into an XML document.
+
+The constructor accepted our uppercase strings without error (because
+`get_info` doesn't validate at construction time) but raised inside
+`get_info` because `STREAMS` isn't one of `(station, channel, response)`.
+
+**Fix:** Don't use `basic_client` for this — talk the SeedLink protocol
+directly via a TCP socket. `info.query_info()` opens a connection, sends
+`INFO LEVEL\r\n`, reads packets until it sees the terminator SLHEAD
+(`"SLINFO  "` with two trailing spaces, vs `"SLINFO *"` for continuation
+packets), extracts each packet's data section using the miniSEED data-offset
+field at FSDH bytes 44-45, and concatenates. ~50 lines, no protocol
+dependency beyond the stdlib.
+
+**Don't forget:** if a future ObsPy adds a real SeedLink-INFO wrapper, by
+all means migrate — but don't be fooled by the name `get_info` again.
 
 ### matplotlib RadioButtons API change
 
@@ -207,7 +243,5 @@ and verify:
   3-component view)
 - Should the archiver compute basic QC metrics (gaps, latency, completeness) and emit
   them somewhere? Currently only logs heartbeats.
-- Worth adding a `seedlink-py-info` CLI that wraps `INFO=STREAMS` queries for server
-  discovery / stream listing?
 - The `WATER_LEVEL=60` default for response removal is conservative; could be tuned
   per-instrument-type. Not worth doing until a user asks.

@@ -7,6 +7,8 @@ built on [ObsPy](https://docs.obspy.org). Provides:
 - **`seedlink-py-archiver`** — robust SLClient-based archiver that writes an
   [SDS](https://www.seiscomp.de/seiscomp3/doc/applications/slarchive/SDS.html)
   miniSEED archive
+- **`seedlink-py-info`** — query a SeedLink server for stations, streams, gaps,
+  and active connections (a Python port of `slinktool`'s INFO queries)
 
 ## Features
 
@@ -28,6 +30,12 @@ built on [ObsPy](https://docs.obspy.org). Provides:
 - Writes raw miniSEED records byte-identically (no round-trip through numpy)
 - Automatic reconnection with configurable backoff
 - Rotating log file (10 MB × 5 backups) with console heartbeat
+
+### Info / discovery (`seedlink-py-info`)
+- `slinktool`-style flags: `-I` server id, `-L` stations, `-Q` streams,
+  `-G` gaps, `-C` connections
+- Client-side filtering by `--network` and `--station`
+- Output as a human-readable table (default), JSON (`--json`), or raw XML (`--xml`)
 
 ## Installation
 
@@ -149,6 +157,37 @@ WantedBy=multi-user.target
 
 Run `seedlink-py-archiver --help` for the full list of options.
 
+### Info / discovery
+
+`seedlink-py-info` queries the server for what's available — the same kinds of
+INFO requests that SeisComP's `slinktool` exposes. The flag set mirrors `slinktool`
+so existing muscle memory transfers.
+
+```bash
+# Server identification + capabilities
+seedlink-py-info -I
+
+# All stations the server is offering
+seedlink-py-info -L
+
+# All streams (NSLC + sample-rate + time range), filtered to one network
+seedlink-py-info -Q --network AM
+
+# Streams for one station as JSON, against IRIS instead of the default
+seedlink-py-info -Q --station ANMO --json rtserve.iris.washington.edu:18000
+
+# Recent gaps (server-dependent — many SeisComP installs disable this)
+seedlink-py-info -G
+
+# Active client connections (often redacted by the server)
+seedlink-py-info -C
+```
+
+The default server is `seiscomp.hakai.org:18000`, matching the archiver. Pass any
+other `host:port` as a positional argument.
+
+Run `seedlink-py-info --help` for the full list of options.
+
 
 ### As a Python API
 
@@ -176,6 +215,15 @@ run_archiver(
     archive_root="/data/sds",
     state_file="/var/lib/slarchiver/state.txt",
 )
+
+# Info / discovery
+from seedlink_py_utils import query_info
+from seedlink_py_utils.info import parse_streams, filter_records
+
+xml = query_info("seiscomp.hakai.org:18000", level="STREAMS")
+streams = filter_records(parse_streams(xml), network="AM")
+for s in streams:
+    print(s["network"], s["station"], s["location"], s["channel"])
 ```
 
 ## Viewer configuration reference
@@ -213,6 +261,24 @@ run_archiver(
 | `--max-reconnects` | unlimited | Cap on reconnect attempts |
 | `--log-file` | — | Path to rotating log file (10 MB × 5 backups) |
 | `--log-level` | `INFO` | DEBUG / INFO / WARNING / ERROR |
+
+## Info configuration reference
+
+| Flag | Default | Description |
+|---|---|---|
+| `server` (positional) | `seiscomp.hakai.org:18000` | SeedLink server `host:port` |
+| `-I`, `--id` | — | Server identification + version |
+| `-L`, `--stations` | — | List stations |
+| `-Q`, `--streams` | — | List streams (NSLC + sample-rate + time range) |
+| `-G`, `--gaps` | — | List recent gaps (server-dependent) |
+| `-C`, `--connections` | — | List active client connections (often redacted) |
+| `--network`, `-n` | — | Filter by network code |
+| `--station`, `-S` | — | Filter by station code |
+| `--json` | off | Emit parsed records as JSON |
+| `--xml` | off | Emit raw XML response |
+| `--timeout` | `30` | Socket timeout (seconds) |
+
+Exactly one of `-I/-L/-Q/-G/-C` is required.
 
 ## Notes
 
