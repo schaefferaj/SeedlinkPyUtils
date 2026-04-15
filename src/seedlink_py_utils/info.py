@@ -16,9 +16,10 @@ Levels supported:
 - ``ALL``          — everything the server supports, in one document
 """
 
+import fnmatch
 import socket
 import struct
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 from xml.etree import ElementTree as ET
 
 
@@ -244,4 +245,57 @@ def filter_records(records: List[Dict[str, str]],
     if station:
         s = station.upper()
         out = [r for r in out if r.get("station", "").upper() == s]
+    return out
+
+
+def _has_wildcard(s: str) -> bool:
+    return "?" in s or "*" in s
+
+
+def expand_stream_wildcards(server: str,
+                            streams: Iterable[str],
+                            timeout: float = 30.0) -> List[str]:
+    """Expand ``?`` / ``*`` wildcards in NET and STA fields by querying the
+    server's INFO=STREAMS, leaving LOC/CHA wildcards alone (SeedLink handles
+    those natively).
+
+    Each input is ``NET.STA.LOC.CHA``. If neither NET nor STA contains a
+    wildcard, the spec passes through unchanged. Otherwise we ask the server
+    what it offers and emit one explicit ``NET.STA.LOC.CHA`` per matching
+    station, with the original LOC/CHA preserved.
+
+    Raises ValueError if any wildcarded spec matches zero stations on the
+    server — silent zero-match is almost always a typo and would otherwise
+    leave the archiver subscribed to nothing.
+    """
+    streams = list(streams)
+    if not any(
+        _has_wildcard(s.split(".")[0]) or _has_wildcard(s.split(".")[1])
+        for s in streams if s.count(".") == 3
+    ):
+        return streams
+
+    xml = query_info(server, level="STREAMS", timeout=timeout)
+    available = sorted({(r["network"], r["station"]) for r in parse_streams(xml)})
+
+    out: List[str] = []
+    for spec in streams:
+        bits = spec.split(".")
+        if len(bits) != 4:
+            raise ValueError(
+                f"stream must be NET.STA.LOC.CHA (4 dot-separated fields), got {spec!r}"
+            )
+        net, sta, loc, cha = bits
+        if not (_has_wildcard(net) or _has_wildcard(sta)):
+            out.append(spec)
+            continue
+        matched = [(n, st) for (n, st) in available
+                   if fnmatch.fnmatchcase(n, net) and fnmatch.fnmatchcase(st, sta)]
+        if not matched:
+            raise ValueError(
+                f"No stations on {server} match {spec!r} "
+                f"(network={net!r}, station={sta!r})"
+            )
+        for (n, st) in matched:
+            out.append(f"{n}.{st}.{loc}.{cha}")
     return out

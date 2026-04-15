@@ -114,6 +114,104 @@ The `overrideredirect` fallback isn't true fullscreen (the WM doesn't know about
 so multi-monitor focus might behave oddly), but it's visually identical for this
 use case.
 
+### ObsPy's `SeedLinkConnection.save_state` parameter is a lie
+
+**Symptom:** Every call to `slconn.save_state("./sl_state.txt")` raised
+``TypeError: expected str, bytes or os.PathLike object, not NoneType:
+opening state file: ./sl_state.txt`` — the path in the error is the one we
+passed, so it looks like we're doing something wrong, but we aren't.
+
+**Root cause (obspy bug):** `SeedLinkConnection.save_state(self, statefile)`
+accepts a `statefile` parameter in its signature and docstring, but the
+actual code opens `self.statefile`:
+
+```python
+def save_state(self, statefile):
+    try:
+        statefile_file = open(self.statefile, 'w')   # <- ignores the parameter
+    except IOError as ioe:
+        ...
+    except Exception as e:
+        msg = "%s: opening state file: %s" % (e, statefile)  # formats w/ param!
+        raise SeedLinkException(msg)
+```
+
+If `self.statefile` was never set, it's `None`, `open(None, ...)` raises
+`TypeError` (not caught by `except IOError`), and the fallback `except
+Exception` formats the error with the *parameter*, yielding a wonderfully
+misleading "I opened your path and got None" message. `recover_state`
+has the same shape.
+
+**Workaround:** set the attribute directly before touching the connection:
+
+```python
+client.slconn.statefile = state_file
+```
+
+Then `save_state(anything)` and `recover_state(anything)` both work, because
+the parameter is ignored and the attribute they actually read is correct.
+Tracked upstream if you ever want to fix it there; for now the one-liner
+workaround is sufficient and keeps our API surface honest (callers still
+pass a path).
+
+**Also note the call order.** `recover_state` matches entries in the state
+file against `slconn.streams` (by `NET`/`STA`) and silently skips any that
+don't match. `slconn.streams` is empty until `client.initialize()` has run
+to parse `multiselect` into stream objects, so the correct sequence is:
+
+```python
+client.multiselect = "PQ_DAOB:  HH?"
+client.initialize()                        # populates slconn.streams
+client.slconn.recover_state(state_file)    # now has something to match against
+client.run()
+```
+
+Calling `recover_state` before `initialize()` looks fine (no error) but
+silently logs "no matching streams found" and the archiver starts from the
+live tip instead of resuming — defeating the whole point of the state file.
+
+**State-file format reminder.** One line per station, not per stream:
+``NET STA SEQNUM YYYY,M,D,H,M,S``. The sequence number is per-station — the
+server replays all subscribed channels of that station from that seqnum on
+reconnect, so per-channel tracking isn't needed.
+
+### ObsPy `SLPacket` / `SLClient` API cleanups the archiver had wrong
+
+A cluster of mismatches against current (≥1.4) ObsPy, found all at once
+while stress-testing the archiver. Worth keeping together because they're
+easy to confuse:
+
+1. **`SLPacket.TYPE_SLDATA` does not exist.** The gate should match ObsPy's
+   own `SLClient.packet_handler` example: skip INFO packets explicitly and
+   treat everything else as data.
+   ```python
+   if ptype in (SLPacket.TYPE_SLINF, SLPacket.TYPE_SLINFT):
+       return False
+   # fall through → trace = slpack.get_trace(); archive it
+   ```
+   The original `if ptype not in (SLPacket.TYPE_SLDATA,)` raised
+   AttributeError on every packet, which the reconnect loop caught as a
+   "connection error" — the symptom looked like a network problem, not a
+   missing constant.
+
+2. **`SLPacket.get_raw_data()` does not exist either.** The 512-byte raw
+   miniSEED record is available as the attribute `slpack.msrecord`. The
+   old method name may have existed in a pre-1.0 ObsPy but is gone now.
+   This is what enables our bit-identical append-only SDS writes (see the
+   design-decisions section above).
+
+3. **`SLClient.__init__(loglevel=...)` is deprecated and ignored** in
+   ObsPy ≥1.4 (emits `ObsPyDeprecationWarning: Deprecated keyword loglevel
+   in __init__() call - ignoring`). Configure logging via the standard
+   `logging` module in `logging_setup.py` instead and pass nothing to
+   `super().__init__()`.
+
+4. **`slconn.save_state()` returns False on failure**, it does *not*
+   raise, and it prints the error message to stderr on its own. So wrapping
+   it in `try: ... except: pass` silently hides save failures. Check the
+   return value and log a warning on False; don't rely on exceptions to
+   notice problems.
+
 ### `basic_client.Client.get_info()` is NOT the SeedLink INFO command
 
 **Symptom:** Initial implementation of `seedlink-py-info` raised
@@ -210,16 +308,18 @@ case (a single seismologist watching a few stations) is well-served by a desktop
 window. If multi-user remote monitoring becomes a need, that's a separate project,
 not a feature of this one.
 
-### Auto-discovery of streams via `INFO=STREAMS`
+### Auto-discovery of streams via `INFO=STREAMS` *(implemented in 0.2.0)*
 
-For the archiver, we considered letting users specify `AM.*..EH?` and having the
-client expand the wildcard against the server's available streams. Rejected for v1
-because:
-- Adds an extra round-trip and parsing layer at startup
-- Users who want this can `seiscomp-fdsnws-stationlist` once and paste the list
-- The `SLClient` multiselect approach is well-understood and matches `slarchive`
-
-Worth adding later behind a `--expand-wildcards` flag if users ask.
+The original v1 decision was to keep the archiver dumb and require explicit
+`NET.STA` lists, on the theory that wildcards across stations were a foot-gun
+(an `AM.*` pattern can fan out to hundreds of stations) and the workaround
+(`seiscomp-fdsnws-stationlist | paste`) was acceptable. That stance was
+softened once `seedlink-py-info` landed: with a working INFO=STREAMS client
+already in the package, the cost of adding the expansion is ~30 lines and one
+extra round-trip at startup. The fan-out concern is handled by raising on
+zero matches (silent subscription to nothing is the worst failure mode) and
+by leaving the flag off by default — wildcards in NET/STA still raise from
+`build_multiselect()` unless the user opts in.
 
 ## Testing notes (manual)
 
