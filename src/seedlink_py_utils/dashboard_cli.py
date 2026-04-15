@@ -42,6 +42,8 @@ def build_parser():
             "\n"
             "  seedlink-py-dashboard -n AM -c 'HH?'                   # wildcards in the channel filter\n"
             "\n"
+            "  seedlink-py-dashboard --sort-by-status                 # STALE at the top, OK at the bottom\n"
+            "\n"
             "  seedlink-py-dashboard --once                           # single snapshot (scriptable)\n"
             "\n"
             "  seedlink-py-dashboard --ok-threshold 30 \\\n"
@@ -86,6 +88,12 @@ def build_parser():
                              "Quote the pattern in shells that glob * / ?.")
 
     g_out = p.add_argument_group("Output")
+    g_out.add_argument("--sort-by-status", dest="sort_by_status",
+                       action="store_true", default=False,
+                       help="Group rows by status to focus attention on problems:\n"
+                            "STALE first, then LAG, UNKNOWN, OK last. Within each\n"
+                            "group rows are sorted alphabetically by NSLC.\n"
+                            "Default: alphabetical by NSLC only.")
     g_out.add_argument("--no-color", dest="color", action="store_false",
                        default=True,
                        help="Disable ANSI colour escapes. Auto-disabled when\n"
@@ -113,6 +121,7 @@ def main(argv=None):
         color=args.color,
         once=args.once,
         timeout=args.timeout,
+        sort_by_status=args.sort_by_status,
     )
     run_dashboard(cfg)
     return 0

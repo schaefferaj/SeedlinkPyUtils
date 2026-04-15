@@ -323,6 +323,10 @@ seedlink-py-dashboard --channel '*Z'
 # Single snapshot — scriptable, no screen clear
 seedlink-py-dashboard --once
 
+# Focus attention on problems — STALE rows at the top, OK at the bottom
+# (alphabetical by NSLC within each status group)
+seedlink-py-dashboard --sort-by-status
+
 # Tighter thresholds (strict "should be near real-time")
 seedlink-py-dashboard --ok-threshold 30 --stale-threshold 300
 ```
@@ -530,6 +534,7 @@ Exactly one of `-I/-L/-Q/-G/-C` is required.
 | `--network`, `-n` | — | Filter by network code (exact match, case-insensitive) |
 | `--station`, `-S` | — | Filter by station code (exact match, case-insensitive) |
 | `--channel`, `-c` | — | Filter by channel code; supports `?` / `*` wildcards (e.g. `EHZ`, `HH?`, `*Z`) |
+| `--sort-by-status` | off | Group rows by status: STALE, LAG, UNKNOWN, OK — alphabetical by NSLC within each group |
 | `--no-color` | off | Disable ANSI colour (auto-disabled when stdout isn't a TTY) |
 
 ## Notes
