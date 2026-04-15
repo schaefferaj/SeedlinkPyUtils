@@ -6,7 +6,7 @@ Read this before making changes.
 ## Project overview
 
 SeedlinkPyUtils is a Python package providing real-time SeedLink tools built on ObsPy.
-It currently exposes two CLIs:
+It currently exposes five CLIs:
 
 - **`seedlink-py-viewer`** — interactive matplotlib viewer with live waveform + spectrogram,
   filter selector, dark mode, and cross-platform fullscreen.
@@ -22,6 +22,12 @@ It currently exposes two CLIs:
   optional JSON/XML output. Talks the SeedLink protocol directly over a TCP
   socket (no ObsPy SLClient subclass needed for one-shot queries) and parses
   the XML response with the stdlib `xml.etree.ElementTree`.
+- **`seedlink-py-dashboard`** — live terminal dashboard that polls
+  `INFO=STREAMS` every `--interval` seconds and renders a per-NSLC latency
+  table with OK / LAG / STALE classification. Complement to
+  `seedlink-py-info` (snapshot vs live). ANSI-colour TTY output; auto-falls-
+  back to plain text when stdout is not a TTY. Reuses `info.query_info` +
+  `info.parse_streams` — no new protocol code.
 
 Target users are seismologists and network operators (the author works at the Geological
 Survey of Canada). Primary deployment is against a SeisComP fdsnws/seedlink server at
@@ -33,7 +39,7 @@ standard FDSN/SeedLink servers like IRIS.
 
 ```
 SeedlinkPyUtils/
-├── pyproject.toml              # packaging; defines four console scripts
+├── pyproject.toml              # packaging; defines five console scripts
 ├── environment.yml             # conda env with the scientific stack (user does `pip install [-e] .` after)
 ├── requirements.txt            # for plain-pip users
 ├── README.md
@@ -54,6 +60,8 @@ SeedlinkPyUtils/
     ├── archiver_cli.py         # archiver CLI (seedlink-py-archiver)
     ├── info.py                 # query_info() + XML parsers for INFO responses
     ├── info_cli.py             # info CLI (seedlink-py-info)
+    ├── dashboard.py            # DashboardConfig, classify/render/run_dashboard
+    ├── dashboard_cli.py        # dashboard CLI (seedlink-py-dashboard)
     ├── picker.py               # STA/LTA picker presets + runtime helper
     └── logging_setup.py        # rotating file + console logger
 ```
@@ -206,6 +214,41 @@ accidentally importing from the working directory instead of the installed packa
   reporting for performance, and most servers redact CONNECTIONS for
   non-trusted clients. An empty result here is normal, not a bug.
 
+### Stream availability dashboard
+- **Terminal-first, not matplotlib.** The use case is "SSH into a box and
+  leave it running; glance at it on a side monitor" — that's a TTY
+  dashboard (htop-style), not a figure. Matplotlib would add weight for no
+  gain here. A matplotlib heatmap mode is a reasonable future addition
+  but was explicitly skipped for v1.
+- **Reuses `info.query_info` + `info.parse_streams`.** No new protocol
+  code. The dashboard module is purely presentation + polling loop on top
+  of the existing one-shot INFO machinery. If `info` grows new server-
+  flavour attribute aliases, the dashboard gets them for free.
+- **Latency = `now - end_time`.** INFO=STREAMS gives us a per-NSLC
+  `end_time` (the latest record the server has); subtracting from
+  `UTCDateTime.now()` is the definition of stream latency we classify
+  against. Negative values (server clock ahead of ours, or NTP skew)
+  classify as OK, not a degenerate bucket — data is flowing, we just have
+  clock skew.
+- **Separation of pure logic and I/O.** `classify`, `_fmt_latency`,
+  `compute_rows`, and `render` are deterministic and take only plain
+  data; only `run_dashboard` opens the socket. That split exists so the
+  presentation logic is unit-testable without a live server.
+- **Auto-downgrade when stdout is not a TTY.** `run_dashboard` checks
+  `sys.stdout.isatty()` up front and disables colour + screen-clear when
+  running under a pipe / redirect. So `seedlink-py-dashboard > log.txt`
+  produces a readable growing log rather than a sea of `\x1b[...` bytes.
+- **Per-poll failures don't kill the loop.** A network blip / server
+  temporarily refusing INFO shows up as a one-line `Poll failed: …` in
+  place of the frame and the loop continues. The dashboard is expected
+  to run for days across flaky connections.
+- **`UNKNOWN` is for unparseable `end_time`, not zero latency.**
+  A stream the server is silent on still has an `end_time` (timestamp of
+  the last packet it ever saw); that just classifies as `STALE` via the
+  large latency. `UNKNOWN` only fires when `end_time` is missing or
+  `UTCDateTime()` can't parse it — a schema surprise, not an operational
+  state.
+
 ### Multiselect / wildcards
 SeedLink natively supports `?` and `*` wildcards in **LOC and CHA only** — these are
 sent verbatim in the `SELECT` command. Wildcards in NET or STA are not part of the
@@ -349,10 +392,10 @@ If adding a new tool to the package:
 6. Update this CLAUDE.md if architecture or gotchas change
 
 Good candidates for future tools:
-- Real-time multi-channel viewer (3-component, all channels of one station)
 - PSD / PPSD live monitor (uses `obspy.signal.PPSD`)
-- Stream availability dashboard (queries `INFO=STREAMS` periodically)
 - Auto-restart wrapper for the archiver with watchdog and stale-data alerting
+- Matplotlib heatmap mode for the dashboard (longitudinal view across many
+  stations at a glance; complements the TTY table)
 
 ## Server context cheat sheet
 
