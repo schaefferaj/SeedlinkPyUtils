@@ -59,6 +59,8 @@ class DashboardConfig:
     color: bool = True               # emit ANSI colour escapes
     once: bool = False               # run one poll and exit (no screen clear)
     timeout: float = 30.0            # per-poll socket timeout, seconds
+    sort_by_status: bool = False     # group rows by status (STALE first);
+                                     # alphabetical NSLC within each group
 
 
 # ---------------------------------------------------------------------------
@@ -232,6 +234,24 @@ def _sort_key(r: dict):
             r.get("location", ""), r.get("channel", ""))
 
 
+# Status ordering used by --sort-by-status. STALE first (needs focus),
+# then LAG (watch territory), then UNKNOWN (rare schema surprise worth
+# investigating), then OK (healthy confirmation at the bottom). Any status
+# not in this table falls through to the end via the default 99.
+_STATUS_RANK = {"STALE": 0, "LAG": 1, "UNKNOWN": 2, "OK": 3}
+
+
+def _sort_key_by_status(r: dict):
+    """Sort key that ranks by status first, then alphabetically by NSLC.
+
+    Requires ``r["status"]`` to be set — so this is applied to rows
+    returned from :func:`compute_rows`, not to raw INFO=STREAMS records.
+    """
+    return (_STATUS_RANK.get(r.get("status", "UNKNOWN"), 99),
+            r.get("network", ""), r.get("station", ""),
+            r.get("location", ""), r.get("channel", ""))
+
+
 # ---------------------------------------------------------------------------
 # Polling loop
 # ---------------------------------------------------------------------------
@@ -265,9 +285,12 @@ def run_dashboard(cfg: DashboardConfig) -> None:
                     )
                 if cfg.channel:
                     records = filter_by_channel(records, cfg.channel)
-                records.sort(key=_sort_key)
                 now = UTCDateTime()
                 rows = compute_rows(records, now, cfg)
+                # Sort after compute_rows so the status-aware ordering has
+                # a status field to key on. Default is alphabetical NSLC.
+                rows.sort(key=_sort_key_by_status
+                          if cfg.sort_by_status else _sort_key)
                 frame = render(rows, cfg, cfg.server,
                                polled_at=now, clear_screen=clear_screen)
                 sys.stdout.write(frame)

@@ -258,6 +258,15 @@ accidentally importing from the working directory instead of the installed packa
   station is naturally exact. Leaving `filter_records` unchanged also
   keeps the `seedlink-py-info` CLI's existing `--network` / `--station`
   semantics stable.
+- **`--sort-by-status` ordering: STALE, LAG, UNKNOWN, OK.** The rank
+  table `_STATUS_RANK` in `dashboard.py` fixes this ordering with STALE
+  at the top (needs focus now) and OK at the bottom (healthy confirmation
+  row). UNKNOWN sits between LAG and OK — it's a schema-surprise state
+  that's rare in practice but worth investigating, not something urgent
+  like STALE. Alphabetical NSLC is the tie-break within each status
+  group (same key as the default sort), so two channels of one station
+  stay adjacent within their bucket. Sorting happens on the decorated
+  rows (after `compute_rows` attaches `status`), not the raw records.
 
 ### Multiselect / wildcards
 SeedLink natively supports `?` and `*` wildcards in **LOC and CHA only** — these are
