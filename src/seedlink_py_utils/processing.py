@@ -8,6 +8,36 @@ from obspy.clients.fdsn import Client as FDSNClient
 from .config import FILTERS, ViewerConfig
 
 
+def _make_fdsn_client(base: str):
+    """Build an FDSNClient for `base`, tolerant of both standard servers and
+    SeisComP-behind-nginx setups.
+
+    Tries service discovery first (works for IRIS and other conformant servers).
+    If discovery fails, falls back to explicit service_mappings that append
+    /fdsnws/ — which matches SeisComP's fdsnws server whether accessed directly
+    or via an nginx location that proxies /fdsnws → upstream-at-/fdsnws (giving
+    the doubled /fdsnws/fdsnws/ path from the outside).
+    """
+    # 1. Try standard discovery (works for IRIS, GFZ, etc.)
+    try:
+        return FDSNClient(base_url=base)
+    except Exception as e:
+        print(f"FDSN discovery failed on {base} ({e}); trying explicit /fdsnws mapping.")
+
+    # 2. Fall back to explicit mappings with appended /fdsnws/.
+    #    _discover_services=False is required — otherwise the constructor
+    #    re-runs discovery and raises before service_mappings are consulted.
+    return FDSNClient(
+        base_url=base,
+        service_mappings={
+            "station":    f"{base}/fdsnws/station/1",
+            "dataselect": f"{base}/fdsnws/dataselect/1",
+            "event":      f"{base}/fdsnws/event/1",
+        },
+        _discover_services=False,
+    )
+
+
 def load_inventory(cfg: ViewerConfig):
     """Load a StationXML inventory for response removal.
 
@@ -31,16 +61,8 @@ def load_inventory(cfg: ViewerConfig):
         if cfg.fdsn_server:
             base = cfg.fdsn_server.rstrip("/")
             print(f"Fetching response for {net}.{sta}.{loc}.{cha} from {base}...")
-            # service_mappings avoids ObsPy appending '/fdsnws/' a second time
-            # when the base URL already includes it (e.g. behind nginx).
-            fdsn = FDSNClient(
-                base_url=base,
-                service_mappings={
-                    "station":    f"{base}/station/1",
-                    "dataselect": f"{base}/dataselect/1",
-                    "event":      f"{base}/event/1",
-                },
-            )
+
+            fdsn = _make_fdsn_client(base)
             inv = fdsn.get_stations(
                 network=net, station=sta, location=loc, channel=cha,
                 level="response",
