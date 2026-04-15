@@ -11,6 +11,8 @@ has its own optional STA/LTA picker (same preset across panels, but
 independent pick state so per-station triggers appear in the right place).
 """
 
+import math
+
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -78,13 +80,30 @@ def run_viewer_mc(cfg: ViewerConfig):
     # One combined inventory covers response removal for every station.
     inventory = load_inventory_multi(cfg, streams)
 
-    # Pick the primary stream for the single-stream cfg.nslc slot (used by
-    # load_inventory-style paths that only look at the first NSLC). Already
-    # handled above via load_inventory_multi, but we keep the slot tidy.
-    tracebuf = TraceBuffer(cfg.buffer_seconds)
+    # Pad the internal buffer by one period of pre_filt's lowest corner so
+    # the low-side response-removal taper artifact falls off the left edge
+    # of the visible window. This is the standard "one wavelength of the
+    # longest period you care about" lead-in for deconvolution — without
+    # it, the 1/f1-scale time-domain ringing from the pre_filt taper shows
+    # up as a slow ramp on the left of every panel. Only active when an
+    # inventory is present (no inventory → no response removal → no taper
+    # to hide), and only when pre_filt[0] is positive (degenerate config
+    # otherwise). The display x-limits stay at (-buffer_seconds, 0) so the
+    # padded region silently scrolls off-screen.
+    taper_pad_seconds = 0
+    if inventory is not None and cfg.pre_filt and cfg.pre_filt[0] > 0:
+        taper_pad_seconds = int(math.ceil(1.0 / cfg.pre_filt[0]))
+        print(
+            f"Padding internal buffer by {taper_pad_seconds}s "
+            f"(1 / pre_filt[0]={cfg.pre_filt[0]}) to hide the "
+            f"response-removal taper off the left edge of the view."
+        )
+    internal_buffer_seconds = cfg.buffer_seconds + taper_pad_seconds
+
+    tracebuf = TraceBuffer(internal_buffer_seconds)
     start_seedlink_worker(
         cfg.seedlink_server, streams, tracebuf,
-        backfill_seconds=cfg.buffer_seconds if cfg.backfill_on_start else 0,
+        backfill_seconds=internal_buffer_seconds if cfg.backfill_on_start else 0,
     )
 
     if cfg.filter_name is not None and cfg.filter_name not in FILTERS:
