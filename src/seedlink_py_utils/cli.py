@@ -2,7 +2,7 @@
 
 import argparse
 
-from .config import ViewerConfig
+from .config import FILTER_CLI_ALIASES, ViewerConfig
 from .viewer import run_viewer
 
 
@@ -91,6 +91,11 @@ def build_parser():
                    metavar="F1,F2,F3,F4",
                    help="Pre-filter cosine taper corners for response removal.")
 
+    p.add_argument("--filter", dest="filter_alias",
+                   choices=list(FILTER_CLI_ALIASES.keys()), default=None,
+                   help="Lock the waveform filter to one preset and hide the "
+                        "radio buttons. Omit to keep the interactive selector.")
+
     p.add_argument("--fullscreen", "-f", action="store_true",
                    help="Open fullscreen with no toolbar (press Esc to exit).")
     p.add_argument("--dark-mode", "-d", action="store_true",
@@ -119,6 +124,7 @@ def main(argv=None):
         pre_filt=args.pre_filt,
         fullscreen=args.fullscreen,
         dark_mode=args.dark_mode,
+        filter_name=FILTER_CLI_ALIASES[args.filter_alias] if args.filter_alias else None,
     )
     run_viewer(cfg)
 
