@@ -3,7 +3,10 @@
 Real-time [SeedLink](https://www.seiscomp.de/doc/apps/seedlink.html) tools in Python,
 built on [ObsPy](https://docs.obspy.org). Provides:
 
-- **`seedlink-py-viewer`** — interactive trace + spectrogram viewer
+- **`seedlink-py-viewer`** — interactive single-channel trace + spectrogram viewer
+- **`seedlink-py-mc-viewer`** — multi-channel / multi-station stacked
+  waveform viewer (3-component of one station, or one channel across a set
+  of stations), with optional per-panel STA/LTA picker
 - **`seedlink-py-archiver`** — robust SLClient-based archiver that writes an
   [SDS](https://www.seiscomp.de/seiscomp3/doc/applications/slarchive/SDS.html)
   miniSEED archive
@@ -27,6 +30,21 @@ built on [ObsPy](https://docs.obspy.org). Provides:
 - Light and dark themes
 - Cross-platform fullscreen mode (Linux / macOS / Windows / WSL) with a TkAgg-targeted
   fallback for stubborn window managers
+
+### Multi-channel viewer (`seedlink-py-mc-viewer`)
+- One stacked waveform panel per subscribed NSLC stream
+- Supports any combination of stations and channels. Wildcards (`?`, `*`)
+  in any NSLC field auto-expand via a one-shot `INFO=STREAMS` query at
+  startup, with one panel per matched channel:
+  - 3-component of one station: `PQ.DAOB..HH?` → 3 panels (HHZ / HHN / HHE)
+  - Vertical-only across a set: `AM.RA382..EHZ AM.RA481..EHZ PQ.DAOB..HHZ`
+  - Network sweep: `'AM.*..EHZ'` → N panels (every Shake vertical)
+- Shares the same filter and picker presets as the single-channel viewer
+- Independent picker per panel when `--picker` is given — per-station
+  triggers appear as red markers on their own panel at the right time
+- No spectrogram — the focus is cross-panel correlation, not spectral
+  context; use the single-channel viewer when you want a spectrogram
+- `--max-panels` caps the total number of panels (default 8)
 
 ### Archiver (`seedlink-py-archiver`)
 - Robust `SLClient`-based connection with state file for resume-on-restart — no data
@@ -124,6 +142,35 @@ seedlink-py-viewer PQ.DAOB..HHZ --inventory ./my_inventory.xml
 ```
 
 Run `seedlink-py-viewer --help` for the full list of options.
+
+### Multi-channel viewer
+
+`seedlink-py-mc-viewer` takes one or more positional streams and draws one
+waveform panel per stream. Works for both 3-component one-station views and
+one-channel-across-multiple-stations views. Filter and picker options are
+shared with the single-channel viewer; spectrogram-specific options do not
+apply.
+
+```bash
+# Three components of one station
+seedlink-py-mc-viewer PQ.DAOB..HH?
+
+# Verticals from a hand-picked set of stations with a regional picker
+seedlink-py-mc-viewer AM.RA382..EHZ AM.RA481..EHZ PQ.DAOB..HHZ \
+    --picker local
+
+# Every Shake vertical on the Hakai network — wildcards auto-expand
+seedlink-py-mc-viewer 'AM.*..EHZ' --picker local
+
+# Tele-P-band view of IU.ANMO with picker on
+seedlink-py-mc-viewer IU.ANMO.00.BH? --filter tele-p --picker tele-p
+```
+
+Each panel runs its own picker instance (same preset, independent pick
+state) so a trigger on one station doesn't appear on another. The total
+panel count is capped by `--max-panels` (default 8).
+
+Run `seedlink-py-mc-viewer --help` for the full list of options.
 
 ### Archiver
 

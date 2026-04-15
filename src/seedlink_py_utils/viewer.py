@@ -45,9 +45,22 @@ def run_viewer(cfg: ViewerConfig):
 
     inventory = load_inventory(cfg)
 
+    # Pick a spectrogram dB clip range appropriate to the data units. The
+    # default (-180, -100) is tuned for (m/s)²/Hz after response removal;
+    # in raw counts the power is ~8 orders of magnitude higher and the
+    # spectrogram saturates to a single colour. Switch to counts-friendly
+    # defaults when no inventory is available and the user hasn't
+    # overridden --db-clip explicitly.
+    db_clip = cfg.db_clip
+    if inventory is None and not cfg.db_clip_set:
+        db_clip = (0.0, 60.0)
+        print(f"No inventory available: using counts spectrogram clip "
+              f"{db_clip} instead of the m/s default {cfg.db_clip}. "
+              "Pass --db-clip to override.")
+
     tracebuf = TraceBuffer(cfg.buffer_seconds)
     start_seedlink_worker(
-        cfg.seedlink_server, cfg.nslc, tracebuf,
+        cfg.seedlink_server, [cfg.nslc], tracebuf,
         backfill_seconds=cfg.buffer_seconds if cfg.backfill_on_start else 0,
     )
 
@@ -203,8 +216,8 @@ def run_viewer(cfg: ViewerConfig):
         aspect="auto",
         extent=(-cfg.buffer_seconds, 0, cfg.fmin, cfg.fmax),
         cmap=cfg.cmap,
-        vmin=cfg.db_clip[0],
-        vmax=cfg.db_clip[1],
+        vmin=db_clip[0],
+        vmax=db_clip[1],
         interpolation="nearest",
     )
     ax_sp.set_ylabel("Frequency (Hz)")

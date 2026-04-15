@@ -31,11 +31,29 @@ class TraceBuffer:
             self._stream.trim(starttime=cutoff)
 
     def latest(self, channel):
-        """Return a copy of the most recent trace for `channel`, or None."""
+        """Return a copy of the most recent trace for `channel`, or None.
+
+        For a buffer carrying multiple stations, prefer :meth:`latest_nslc`
+        — selecting by channel alone can return the wrong station's trace
+        when channel codes are shared (e.g. two stations both sending HHZ).
+        """
         with self._lock:
             if len(self._stream) == 0:
                 return None
             sel = self._stream.select(channel=channel)
+            if len(sel) == 0:
+                return None
+            return sel[0].copy()
+
+    def latest_nslc(self, net, sta, loc, cha):
+        """Return a copy of the most recent trace matching the full NSLC,
+        or None if no such trace is in the buffer yet."""
+        with self._lock:
+            if len(self._stream) == 0:
+                return None
+            sel = self._stream.select(
+                network=net, station=sta, location=loc, channel=cha
+            )
             if len(sel) == 0:
                 return None
             return sel[0].copy()
@@ -72,7 +90,7 @@ class _ViewerBufferClient(SLClient):
         return False  # keep running
 
 
-def start_seedlink_worker(server: str, nslc, buffer: "TraceBuffer",
+def start_seedlink_worker(server: str, streams, buffer: "TraceBuffer",
                           backfill_seconds: int = 0):
     """Start a daemon thread running an ``SLClient`` worker feeding ``buffer``.
 
@@ -80,9 +98,10 @@ def start_seedlink_worker(server: str, nslc, buffer: "TraceBuffer",
     ----------
     server : str
         SeedLink server ``host:port``.
-    nslc : tuple
-        ``(net, sta, loc, cha)``. Empty LOC renders as two spaces in the
-        SeedLink multiselect field.
+    streams : sequence of (net, sta, loc, cha) tuples, or a single such tuple
+        Each element subscribes to one NSLC (LOC/CHA may contain ? / *
+        wildcards natively). For backward compatibility, a single tuple is
+        also accepted and treated as a one-element list.
     buffer : TraceBuffer
     backfill_seconds : int
         If > 0, ask the server to replay packets from that many seconds
@@ -91,9 +110,16 @@ def start_seedlink_worker(server: str, nslc, buffer: "TraceBuffer",
         network blip we skip backfill — we want live data back ASAP, not a
         second copy of the same history.
     """
-    net, sta, loc, cha = nslc
-    loc_field = loc if loc else "  "  # two spaces for blank location
-    multiselect = f"{net}_{sta}:{loc_field}{cha}"
+    # Accept either a single NSLC tuple (single-channel viewer) or a list of
+    # them (multi-channel viewer).
+    if streams and isinstance(streams[0], str):
+        streams = [streams]
+
+    parts = []
+    for (net, sta, loc, cha) in streams:
+        loc_field = loc if loc else "  "  # two spaces for blank location
+        parts.append(f"{net}_{sta}:{loc_field}{cha}")
+    multiselect = ",".join(parts)
 
     initial_begin_time = None
     if backfill_seconds > 0:

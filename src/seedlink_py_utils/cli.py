@@ -118,8 +118,12 @@ def build_parser():
                         help="Spectrogram maximum frequency (Hz); "
                              "clipped to Nyquist at runtime.")
     g_spec.add_argument("--db-clip", type=parse_db_clip, default=(-180.0, -100.0),
-                        metavar="LO,HI",
-                        help="Spectrogram dB colour limits as 'LO,HI'.")
+                        action=_TrackIfSupplied, metavar="LO,HI",
+                        help="Spectrogram dB colour limits as 'LO,HI'.\n"
+                             "Auto-switched to counts-appropriate values (0,60)\n"
+                             "when no inventory is available (i.e. plotting raw\n"
+                             "counts instead of m/s), unless you pass this flag\n"
+                             "explicitly.")
     g_spec.add_argument("--cmap", default="magma",
                         help="Matplotlib colormap for the spectrogram.")
 
@@ -242,6 +246,7 @@ def main(argv=None):
         cmap=args.cmap,
         water_level=args.water_level,
         pre_filt=pre_filt,
+        db_clip_set=getattr(args, "db_clip_set", False),
         fullscreen=args.fullscreen,
         dark_mode=args.dark_mode,
         backfill_on_start=args.backfill,

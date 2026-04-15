@@ -1,7 +1,7 @@
 """Configuration objects and presets for the real-time viewer."""
 
-from dataclasses import dataclass
-from typing import Optional, Tuple
+from dataclasses import dataclass, field
+from typing import List, Optional, Tuple
 
 
 THEMES = {
@@ -78,6 +78,10 @@ class ViewerConfig:
     fmin: float = 0.5
     fmax: float = 50.0
     db_clip: Tuple[float, float] = (-180.0, -100.0)
+    # Was db_clip explicitly supplied by the user? If not, the viewer
+    # auto-switches to counts-appropriate clip values when no inventory is
+    # available (so the spectrogram doesn't saturate to a single colour).
+    db_clip_set: bool = False
     cmap: str = "magma"
 
     water_level: float = 60.0
@@ -105,6 +109,23 @@ class ViewerConfig:
     picker_lta: Optional[float] = None
     picker_thr_on: Optional[float] = None
     picker_thr_off: Optional[float] = None
+
+    # Multi-channel viewer: upper bound on how many channels matching the
+    # NSLC pattern to display as stacked panels. Unused by the single-channel
+    # viewer. Default 3 matches the typical 3-component station layout.
+    max_channels: int = 3
+
+    # Multi-channel viewer: explicit list of NSLC tuples for the mc-viewer
+    # when users subscribe to multiple stations (e.g. all-verticals from a
+    # selection). Each element is (net, sta, loc, cha). LOC/CHA may contain
+    # SeedLink wildcards; NET/STA wildcards should be pre-expanded via
+    # info.expand_stream_wildcards before being placed here. Unused by the
+    # single-channel viewer.
+    nslcs: List[Tuple[str, str, str, str]] = field(default_factory=list)
+    # Cap on the total number of panels the mc-viewer will draw. If
+    # `nslcs` has more entries than this, the mc-viewer truncates with a
+    # warning.
+    max_panels: int = 8
 
     def __post_init__(self):
         if self.noverlap >= self.nperseg:
