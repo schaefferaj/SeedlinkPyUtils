@@ -7,14 +7,20 @@ from .archiver import run_archiver
 from .logging_setup import setup_logger
 
 
+class _Formatter(argparse.RawDescriptionHelpFormatter,
+                 argparse.ArgumentDefaultsHelpFormatter):
+    """Preserve epilog line breaks while still showing argument defaults."""
+
+
 def build_parser():
     p = argparse.ArgumentParser(
         prog="seedlink-py-archiver",
         description="Archive real-time SeedLink streams into an SDS miniSEED archive.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        formatter_class=_Formatter,
         epilog=(
             "Examples:\n"
             "  seedlink-py-archiver AM.RA382..EH? --archive /data/sds\n"
+            "\n"
             "  seedlink-py-archiver AM.RA382..EH? AM.RA481..EH? PQ.DAOB..HH? \\\n"
             "      --server seiscomp.hakai.org:18000 \\\n"
             "      --archive /data/sds \\\n"
