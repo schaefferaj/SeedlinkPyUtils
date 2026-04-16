@@ -65,3 +65,5 @@ ENV/
 inv_*.xml
 slstate.txt
 *.mseed
+CLAUDE.md
+memory.md
