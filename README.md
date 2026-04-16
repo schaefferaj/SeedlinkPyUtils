@@ -15,6 +15,15 @@ built on [ObsPy](https://docs.obspy.org). Provides:
 - **`seedlink-py-dashboard`** — live operator dashboard showing per-stream
   latency with OK / LAG / STALE classification; polls `INFO=STREAMS` on a
   schedule
+- **`seedlink-py-ppsd`** — live Probabilistic Power Spectral Density
+  monitor; feeds a SeedLink stream into `obspy.signal.PPSD` and
+  re-renders the accumulating 2-D histogram with Peterson's NLNM/NHNM
+  noise models overlaid
+- **`seedlink-py-ppsd-archive`** — headless daemon that maintains per-NSLC
+  master PPSDs on disk (NPZ) and renders per-bucket PNGs on a schedule
+  (daily / weekly / monthly / quarterly / yearly, any combination).
+  Multi-channel, wildcard-expanding, survives restarts, suitable as a
+  long-running service
 
 ## Features
 
@@ -80,6 +89,39 @@ built on [ObsPy](https://docs.obspy.org). Provides:
   `--once` and redirected output emit the full table.
 - Resilient to transient poll failures — a network blip shows as
   `Poll failed: …` and the loop continues
+
+### Probabilistic PSD monitor (`seedlink-py-ppsd`)
+- Live SeedLink stream feeds `obspy.signal.PPSD` directly — response
+  removal happens inside PPSD so the plot is in correct absolute units
+- PQLX colormap by default (matches ObsPy's own `PPSD.plot` default);
+  any matplotlib cmap name works via `--cmap`
+- Peterson NLNM/NHNM overlay on every frame (toggle with `--no-noise-models`)
+- Coverage strip along the bottom of the figure showing when
+  PSD segments landed (dense = continuous, gaps = missing data)
+- McNamara & Buland (2004) defaults: 3600 s segments, 50 % overlap —
+  `--ppsd-length` and `--overlap` expose the knobs but deviating breaks
+  comparability with published noise models
+- Startup backfill from the server's ring buffer so the histogram is
+  non-empty within minutes instead of hours (`--backfill-hours`, default 2)
+- Optional sliding-window cap (`--max-hours`) — older PSDs drop off the
+  histogram, useful for "last 24 h" operator views
+- Same dark-mode / fullscreen / Esc-to-exit ergonomics as the viewer
+
+### Headless PPSD archiver (`seedlink-py-ppsd-archive`)
+- Long-running daemon: subscribes to N streams, maintains one master
+  PPSD per NSLC, renders per-bucket PNGs on a schedule
+- Multiple period types per invocation: `--period daily weekly monthly`
+  renders three sets of PNGs per NSLC, all driven by the same master PPSD
+- Survives restarts: master PPSDs are serialized to `.npz` on every
+  render cycle, reloaded on next startup
+- Wildcard expansion via `--expand-wildcards` (one `INFO=STREAMS` query at
+  startup, same mechanism as the archiver)
+- Soft-fail per-NSLC: stations whose response can't be loaded are
+  logged and skipped; the daemon continues with the rest
+- Per-NSLC folders, per-period subfolders, NSLC.png naming convention
+- Rotating log file (10 MB × 5 backups) with per-render completeness
+  summary for out-of-band fleet monitoring
+- SIGTERM / Ctrl-C triggers a final flush before exit
 
 ## Installation
 
@@ -349,6 +391,160 @@ table is clipped.
 
 Run `seedlink-py-dashboard --help` for the full list of options.
 
+### Probabilistic PSD monitor
+
+`seedlink-py-ppsd` feeds a live SeedLink stream into
+[`obspy.signal.PPSD`](https://docs.obspy.org/packages/autogen/obspy.signal.spectral_estimation.PPSD.html)
+and re-renders the accumulating 2-D histogram of power spectral density
+vs. period, with the Peterson NLNM/NHNM noise-model curves overlaid.
+Useful for leaving up on a side monitor to track station noise
+performance in real time.
+
+```bash
+# Defaults: IRIS SeedLink + EarthScope FDSN, McNamara-standard 3600 s segments
+seedlink-py-ppsd IU.ANMO.00.BHZ
+
+# Dark mode, fullscreen (press Esc to exit)
+seedlink-py-ppsd PQ.DAOB..HHZ -d -f
+
+# Sliding 24 h window — older PSDs drop off the histogram
+seedlink-py-ppsd CN.PGC..HHZ --max-hours 24
+
+# Use a local StationXML instead of fetching from FDSN
+seedlink-py-ppsd PQ.DAOB..HHZ --inventory ./my_inventory.xml
+
+# More aggressive backfill to populate the histogram faster at startup
+# (server ring buffer must actually cover this window; most do)
+seedlink-py-ppsd IU.ANMO.00.BHZ --backfill-hours 6
+
+# Skip the NLNM/NHNM overlay
+seedlink-py-ppsd IU.ANMO.00.BHZ --no-noise-models
+```
+
+**Instrument response is required.** PPSD output is in physical units
+(acceleration power in dB re 1 (m/s²)²/Hz) which only makes sense with
+the response removed. The CLI errors out at startup if `--fdsn ''` is
+set with no `--inventory` to fall back on.
+
+**Time-to-populate.** With the default 3600 s segments, the first PSD
+needs one full hour of contiguous data to land. Startup backfill
+(`--backfill-hours`, default 2) asks the server's ring buffer for
+history, but **delivery is best-effort** — many SeedLink servers (IRIS
+included, in our testing) only replay what's in their ring buffer at
+the moment of request, often a few minutes rather than the requested
+hours. So for the default settings, expect to wait roughly one hour of
+wall-clock time before the first segment lands.
+
+While accumulating, the figure shows a progress message —
+`"Buffered: 12.0 / 60 min (20%)"` — so you can see how far along you
+are. After a day or two of running the histogram converges toward the
+station's long-term noise profile.
+
+**For testing or quick checks**, pass `--ppsd-length 300` (5 min
+segments) — first PSD lands in 5 minutes, useful for verifying the
+pipeline works against a new station before committing to a long
+session. Non-standard segment lengths produce valid PSDs but they're
+no longer directly comparable to the overlaid NLNM/NHNM curves.
+
+**Don't change `--ppsd-length` casually.** Peterson's NLNM/NHNM and
+most published station noise curves assume the McNamara & Buland (2004)
+methodology (3600 s segments, 50 % overlap, 13 sub-segments per
+segment, 75 % sub-overlap). Changing `--ppsd-length` or `--overlap`
+produces valid PSDs but they're no longer directly comparable to the
+overlaid noise models.
+
+Run `seedlink-py-ppsd --help` for the full list of options.
+
+### Headless PPSD archiver
+
+`seedlink-py-ppsd-archive` is the long-running, multi-channel daemon
+counterpart to `seedlink-py-ppsd`. It subscribes to any number of
+streams (NET/STA wildcards via `--expand-wildcards`), maintains a
+master `PPSD` per NSLC, and on a schedule renders per-bucket PNG
+histograms to disk. Each NSLC's master PPSD is persisted to `.npz` on
+every render cycle, so the full histogram survives restarts and
+crashes with at most `--render-interval` worth of new data lost.
+
+```bash
+# Simplest case: weekly PPSDs for one station, defaults everywhere
+seedlink-py-ppsd-archive IU.ANMO.00.BHZ --output-root /data/ppsd
+
+# Daily + weekly + monthly at once for every PQ vertical
+seedlink-py-ppsd-archive 'PQ.*..HHZ' \
+    --output-root /data/ppsd \
+    --period daily weekly monthly \
+    --expand-wildcards
+
+# Hakai SchoolShake fleet against the SeisComP server, rotating log
+seedlink-py-ppsd-archive 'AM.*..EH?' \
+    --server seiscomp.hakai.org:18000 \
+    --fdsn http://seiscomp.hakai.org/fdsnws \
+    --output-root /data/ppsd \
+    --period weekly monthly \
+    --expand-wildcards \
+    --log-file /var/log/ppsd-archive.log
+```
+
+**Output layout.** For each fully-resolved NSLC:
+
+```
+<output-root>/
+└── <NET>.<STA>/
+    ├── <NET>.<STA>.<LOC>.<CHA>.npz              # master PPSD state
+    ├── daily/<NET>.<STA>.<LOC>.<CHA>_2026-04-15.png
+    ├── weekly/<NET>.<STA>.<LOC>.<CHA>_2026-W16.png
+    └── monthly/<NET>.<STA>.<LOC>.<CHA>_2026-04.png
+```
+
+One `.npz` per NSLC, shared across all active periods (they just
+re-bin the same master PSD list into different time windows). One
+`.png` per NSLC × period × bucket.
+
+**Bucket keys (UTC):**
+
+| Period | Key format | Boundaries |
+|---|---|---|
+| `daily` | `YYYY-MM-DD` | Midnight UTC to midnight UTC |
+| `weekly` | `YYYY-Www` | ISO week — Monday 00:00 UTC to next Monday |
+| `monthly` | `YYYY-MM` | First of month to first of next month |
+| `quarterly` | `YYYY-Qn` | Q1=Jan–Mar, Q2=Apr–Jun, Q3=Jul–Sep, Q4=Oct–Dec |
+| `yearly` | `YYYY` | Jan 1 to next Jan 1 |
+
+**Instrument response is required per NSLC.** At startup, the daemon
+fetches a response for every resolved NSLC (FDSN or local inventory).
+Any NSLC whose response can't be loaded is logged as a WARNING and
+skipped — the daemon keeps going with the rest. If **all** NSLCs fail
+response loading, the daemon exits with an error.
+
+**Running as a service.** Minimal systemd unit:
+
+```ini
+[Unit]
+Description=SeedLink PPSD archiver
+After=network.target
+
+[Service]
+Type=simple
+User=seismo
+ExecStart=/opt/conda/envs/seedlink-py-utils/bin/seedlink-py-ppsd-archive \
+    'PQ.*..HHZ' 'CN.*..HHZ' \
+    --output-root /data/ppsd \
+    --period weekly monthly \
+    --expand-wildcards \
+    --log-file /var/log/ppsd-archive.log
+Restart=always
+RestartSec=30
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target
+```
+
+The `TimeoutStopSec=60` gives the daemon enough time to flush the
+final NPZ + PNGs on SIGTERM before systemd escalates to SIGKILL.
+
+Run `seedlink-py-ppsd-archive --help` for the full list of options.
+
 
 ### As a Python API
 
@@ -391,6 +587,25 @@ run_dashboard(DashboardConfig(
     interval=10.0,
     network="PQ",
     channel="HHZ",     # one row per station
+))
+
+# Probabilistic PSD monitor
+from seedlink_py_utils import PPSDConfig, run_ppsd
+
+run_ppsd(PPSDConfig(
+    nslc=("IU", "ANMO", "00", "BHZ"),
+    max_hours=24,         # optional sliding window
+    dark_mode=True,
+))
+
+# Headless PPSD archiver (long-running)
+from seedlink_py_utils import PPSDArchiveConfig, run_ppsd_archive
+
+run_ppsd_archive(PPSDArchiveConfig(
+    streams=["PQ.*..HHZ", "CN.*..HHZ"],
+    output_root="/data/ppsd",
+    periods=("daily", "weekly", "monthly"),
+    expand_wildcards=True,
 ))
 ```
 
@@ -538,6 +753,45 @@ Exactly one of `-I/-L/-Q/-G/-C` is required.
 | `--channel`, `-c` | — | Filter by channel code; supports `?` / `*` wildcards (e.g. `EHZ`, `HH?`, `*Z`) |
 | `--sort-by-status` | off | Group rows by status: STALE, LAG, UNKNOWN, OK — alphabetical by NSLC within each group |
 | `--no-color` | off | Disable ANSI colour (auto-disabled when stdout isn't a TTY) |
+
+## PPSD configuration reference
+
+| Flag | Default | Description |
+|---|---|---|
+| `stream` (positional) | — | `NET.STA.LOC.CHA`, e.g. `IU.ANMO.00.BHZ` |
+| `--server`, `-s` | `rtserve.iris.washington.edu:18000` | SeedLink server `host:port` |
+| `--fdsn` | `https://service.earthscope.org` | FDSN-WS base URL (empty string requires `--inventory`) |
+| `--inventory` | — | Local StationXML file (overrides `--fdsn`) |
+| `--no-cache` | off | Skip the on-disk inventory cache |
+| `--ppsd-length` | `3600` | Length of each PPSD segment (seconds) |
+| `--overlap` | `0.5` | Overlap between consecutive segments (0–1) |
+| `--max-hours` | — | Sliding-window cap; accumulate forever if unset |
+| `--backfill-hours` | `2.0` | Hours of ring-buffer history to request at startup (`0` disables) |
+| `--redraw-ms` | `10000` | Matplotlib redraw interval (ms) |
+| `--cmap` | `viridis` | Matplotlib colormap for the 2-D histogram |
+| `--no-noise-models` | off | Disable the Peterson NLNM/NHNM overlay |
+| `--fullscreen`, `-f` | off | Fullscreen, no toolbar |
+| `--dark-mode`, `-d` | off | Dark colour theme |
+
+## PPSD archiver configuration reference
+
+| Flag | Default | Description |
+|---|---|---|
+| `streams` (positional, 1+) | — | One or more `NET.STA.LOC.CHA`; wildcards in LOC/CHA native, in NET/STA require `--expand-wildcards` |
+| `--output-root` | — (required) | Root directory for NPZs and PNGs |
+| `--period` | `weekly` | One or more of `daily weekly monthly quarterly yearly` |
+| `--render-interval` | `1800` | Seconds between re-render cycles |
+| `--server`, `-s` | `rtserve.iris.washington.edu:18000` | SeedLink server `host:port` |
+| `--fdsn` | `https://service.earthscope.org` | FDSN-WS base URL |
+| `--inventory` | — | Local StationXML file (overrides `--fdsn`) |
+| `--no-cache` | off | Skip the on-disk inventory cache |
+| `--ppsd-length` | `3600` | PPSD segment length (seconds) |
+| `--overlap` | `0.5` | Segment overlap (0–1) |
+| `--expand-wildcards` | off | Expand `?` / `*` in NET/STA via `INFO=STREAMS` at startup |
+| `--cmap` | `pqlx` | Colormap for the 2-D histogram |
+| `--no-noise-models` | off | Disable Peterson NLNM/NHNM overlay |
+| `--log-file` | — | Rotating log file (10 MB × 5 backups) |
+| `--log-level` | `INFO` | DEBUG / INFO / WARNING / ERROR |
 
 ## Notes
 

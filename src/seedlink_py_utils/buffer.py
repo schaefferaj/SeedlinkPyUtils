@@ -29,6 +29,13 @@ class TraceBuffer:
             self._stream.merge(method=1, fill_value=0)
             cutoff = UTCDateTime() - self.buffer_seconds
             self._stream.trim(starttime=cutoff)
+            # Drop accumulated provenance so ``stats.processing`` can't
+            # grow past ObsPy's 100-entry warning threshold over a long
+            # session. Each ``merge``/``trim`` logs an entry, and no
+            # downstream consumer (viewer, mc-viewer, PPSD) reads this
+            # list — it's pure metadata we don't need.
+            for tr in self._stream:
+                tr.stats.processing = []
 
     def latest(self, channel):
         """Return a copy of the most recent trace for `channel`, or None.
