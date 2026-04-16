@@ -37,10 +37,10 @@ def build_parser():
             "Examples:\n"
             "  seedlink-py-mc-viewer PQ.DAOB..HH?                  # 3-component on one station\n"
             "\n"
-            "  seedlink-py-mc-viewer AM.RA382..EHZ AM.RA481..EHZ \\\n"
+            "  seedlink-py-mc-viewer CN.PGC..HHZ CN.NLLB..HHZ \\\n"
             "      PQ.DAOB..HHZ --picker local                     # explicit list, verticals\n"
             "\n"
-            "  seedlink-py-mc-viewer 'AM.*..EHZ' --picker local    # every Shake vertical\n"
+            "  seedlink-py-mc-viewer 'PQ.*..HHZ' --picker local    # every PQ vertical\n"
             "\n"
             "Stream syntax: NET.STA.LOC.CHA with ? / * wildcards allowed in any field.\n"
             "Any wildcard triggers a one-shot INFO=STREAMS query at startup to expand\n"
@@ -64,9 +64,9 @@ def build_parser():
 
     # ---- Data source -----------------------------------------------------
     g_src = p.add_argument_group("Data source")
-    g_src.add_argument("--server", "-s", default="seiscomp.hakai.org:18000",
+    g_src.add_argument("--server", "-s", default="rtserve.iris.washington.edu:18000",
                        help="SeedLink server host:port.")
-    g_src.add_argument("--fdsn", default="http://seiscomp.hakai.org/fdsnws",
+    g_src.add_argument("--fdsn", default="https://service.earthscope.org",
                        help="FDSN web-service base URL for response metadata. "
                             "Set to '' to skip response removal (plot counts).")
     g_src.add_argument("--inventory", default=None,

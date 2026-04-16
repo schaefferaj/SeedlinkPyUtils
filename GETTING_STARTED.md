@@ -249,7 +249,7 @@ Breakdown:
   always use network `AM`, location `00`, and channel `EHZ` for the
   vertical short-period geophone.
 - **`--server rs.local:18000`** — talk to the Shake on your LAN instead of
-  the default Hakai server. Port `18000` is the Shake's SeedLink port.
+  the default IRIS server. Port `18000` is the Shake's SeedLink port.
 - **`--fdsn ''`** — the "no inventory" switch. Two single quotes with
   nothing between them (on Windows `--fdsn ""` with double quotes also
   works). Tells the viewer not to go looking for an instrument-response

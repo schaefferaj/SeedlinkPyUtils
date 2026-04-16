@@ -65,8 +65,8 @@ class ViewerConfig:
     """Runtime configuration for the real-time SeedLink viewer."""
 
     nslc: Tuple[str, str, str, str]
-    seedlink_server: str = "seiscomp.hakai.org:18000"
-    fdsn_server: Optional[str] = "http://seiscomp.hakai.org/fdsnws"
+    seedlink_server: str = "rtserve.iris.washington.edu:18000"
+    fdsn_server: Optional[str] = "https://service.earthscope.org"
     inventory_path: Optional[str] = None
     no_cache: bool = False
 

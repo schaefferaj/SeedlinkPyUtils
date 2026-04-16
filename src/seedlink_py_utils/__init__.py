@@ -8,7 +8,7 @@ from .dashboard import DashboardConfig, run_dashboard
 from .config import ViewerConfig, THEMES, FILTERS
 from .picker import PICKER_PRESETS
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 __all__ = [
     "run_viewer",
     "run_viewer_mc",

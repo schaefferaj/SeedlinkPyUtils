@@ -50,17 +50,17 @@ def build_parser():
             "\n"
             "  seedlink-py-info -L                                     # stations\n"
             "\n"
-            "  seedlink-py-info -Q --network AM                        # AM streams\n"
+            "  seedlink-py-info -Q --network PQ                        # PQ streams\n"
             "\n"
-            "  seedlink-py-info -Q --station RA382 --json              # JSON output\n"
+            "  seedlink-py-info -Q --station ANMO --json               # JSON output\n"
             "\n"
-            "  seedlink-py-info -G rtserve.iris.washington.edu:18000   # gaps on IRIS\n"
+            "  seedlink-py-info -G                                     # gaps (server-dependent)\n"
             "\n"
             "  seedlink-py-info -C                                     # connections (often redacted)\n"
         ),
     )
 
-    p.add_argument("server", nargs="?", default="seiscomp.hakai.org:18000",
+    p.add_argument("server", nargs="?", default="rtserve.iris.washington.edu:18000",
                    help="SeedLink server host:port.")
 
     # ---- Query type (mutually exclusive, one required) -------------------

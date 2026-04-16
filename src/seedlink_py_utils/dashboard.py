@@ -49,7 +49,7 @@ _STATUS_COLOR = {
 class DashboardConfig:
     """Runtime configuration for the stream availability dashboard."""
 
-    server: str = "seiscomp.hakai.org:18000"
+    server: str = "rtserve.iris.washington.edu:18000"
     interval: float = 30.0           # poll period, seconds
     ok_threshold: float = 60.0       # latency < this → OK
     stale_threshold: float = 600.0   # latency > this → STALE; between = LAG

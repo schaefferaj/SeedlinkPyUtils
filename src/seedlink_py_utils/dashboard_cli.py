@@ -30,17 +30,15 @@ def build_parser():
         formatter_class=_Formatter,
         epilog=(
             "Examples:\n"
-            "  seedlink-py-dashboard                                  # default server\n"
+            "  seedlink-py-dashboard                                  # default server (IRIS)\n"
             "\n"
-            "  seedlink-py-dashboard rtserve.iris.washington.edu:18000\n"
+            "  seedlink-py-dashboard --network PQ --interval 10       # just PQ stations, fast poll\n"
             "\n"
-            "  seedlink-py-dashboard --network AM --interval 10       # just the Shakes, fast poll\n"
+            "  seedlink-py-dashboard --station ANMO                   # one station across channels\n"
             "\n"
-            "  seedlink-py-dashboard --station DAOB                   # one station across channels\n"
+            "  seedlink-py-dashboard --channel BHZ                    # verticals only — one row/station\n"
             "\n"
-            "  seedlink-py-dashboard --channel EHZ                    # verticals only — one row/station\n"
-            "\n"
-            "  seedlink-py-dashboard -n AM -c 'HH?'                   # wildcards in the channel filter\n"
+            "  seedlink-py-dashboard -n CN -c 'HH?'                   # wildcards in the channel filter\n"
             "\n"
             "  seedlink-py-dashboard --sort-by-status                 # STALE at the top, OK at the bottom\n"
             "\n"
@@ -54,7 +52,7 @@ def build_parser():
         ),
     )
 
-    p.add_argument("server", nargs="?", default="seiscomp.hakai.org:18000",
+    p.add_argument("server", nargs="?", default="rtserve.iris.washington.edu:18000",
                    help="SeedLink server host:port.")
 
     g_poll = p.add_argument_group("Polling")

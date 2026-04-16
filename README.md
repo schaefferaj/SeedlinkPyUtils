@@ -40,8 +40,8 @@ built on [ObsPy](https://docs.obspy.org). Provides:
   in any NSLC field auto-expand via a one-shot `INFO=STREAMS` query at
   startup, with one panel per matched channel:
   - 3-component of one station: `PQ.DAOB..HH?` → 3 panels (HHZ / HHN / HHE)
-  - Vertical-only across a set: `AM.RA382..EHZ AM.RA481..EHZ PQ.DAOB..HHZ`
-  - Network sweep: `'AM.*..EHZ'` → N panels (every Shake vertical)
+  - Vertical-only across a set: `CN.PGC..HHZ CN.NLLB..HHZ PQ.DAOB..HHZ`
+  - Network sweep: `'PQ.*..HHZ'` → N panels (every PQ vertical)
 - Shares the same filter and picker presets as the single-channel viewer
 - Independent picker per panel when `--picker` is given — per-station
   triggers appear as red markers on their own panel at the right time
@@ -132,11 +132,11 @@ After installation, the `seedlink-py-viewer` command is on your path.
 
 ```bash
 # Basic: stream in NET.STA.LOC.CHA form (empty LOC uses double dots)
-seedlink-py-viewer AM.RA382.00.EHZ
+seedlink-py-viewer IU.ANMO.00.BHZ
 seedlink-py-viewer PQ.DAOB..HHZ
 
 # Dark mode, fullscreen (press Esc to exit)
-seedlink-py-viewer AM.RA382.00.EHZ --dark-mode --fullscreen
+seedlink-py-viewer IU.ANMO.00.BHZ --dark-mode --fullscreen
 
 # Lock to a preset filter — hides the dropdown selector
 seedlink-py-viewer PQ.DAOB..HHZ --filter hp3
@@ -149,18 +149,13 @@ seedlink-py-viewer IU.ANMO.00.BHZ --filter tele-p
 seedlink-py-viewer IU.ANMO.00.BHZ --picker tele-p
 
 # Picker with manual STA/LTA override on top of a preset
-seedlink-py-viewer AM.RA382.00.EHZ --picker local --sta 0.3 --lta 8
+seedlink-py-viewer IU.ANMO.00.BHZ --picker local --sta 0.3 --lta 8
 
-# Point at a different SeedLink server and FDSN for metadata
-seedlink-py-viewer IU.ANMO.00.BHZ \
-    --server rtserve.iris.washington.edu:18000 \
-    --fdsn https://service.iris.edu \
-    --buffer 600 --fmax 20
+# Local Raspberry Shake on your LAN — no inventory needed (plots counts)
+# Use rs.local or the Shake's IP address if rs.local doesn't resolve
+seedlink-py-viewer AM.RXXXX.00.EHZ --server rs.local:18000 --fdsn ''
 
-# Skip response removal and just plot counts
-seedlink-py-viewer AM.RA382.00.EHZ --fdsn ''
-
-# Use a local StationXML instead of fetching
+# Use a local StationXML instead of fetching from FDSN
 seedlink-py-viewer PQ.DAOB..HHZ --inventory ./my_inventory.xml
 ```
 
@@ -178,12 +173,12 @@ apply.
 # Three components of one station
 seedlink-py-mc-viewer PQ.DAOB..HH?
 
-# Verticals from a hand-picked set of stations with a regional picker
-seedlink-py-mc-viewer AM.RA382..EHZ AM.RA481..EHZ PQ.DAOB..HHZ \
+# Verticals from a hand-picked set of stations with a local picker
+seedlink-py-mc-viewer CN.PGC..HHZ CN.NLLB..HHZ PQ.DAOB..HHZ \
     --picker local
 
-# Every Shake vertical on the Hakai network — wildcards auto-expand
-seedlink-py-mc-viewer 'AM.*..EHZ' --picker local
+# Every PQ vertical — wildcards auto-expand via INFO=STREAMS
+seedlink-py-mc-viewer 'PQ.*..HHZ' --picker local
 
 # Tele-P-band view of IU.ANMO with picker on
 seedlink-py-mc-viewer IU.ANMO.00.BH? --filter tele-p --picker tele-p
@@ -204,24 +199,23 @@ and the server will backfill anything it still has buffered.
 
 ```bash
 # Single station, three channels
-seedlink-py-archiver AM.RA382..EH? --archive /data/sds
+seedlink-py-archiver IU.ANMO.00.BH? --archive /data/sds
 
-# Multiple stations, blank locations, with state file and rotating log
-seedlink-py-archiver AM.RA382..EH? AM.RA481..EH? PQ.DAOB..HH? \
-    --server seiscomp.hakai.org:18000 \
+# Multiple stations with state file and rotating log
+seedlink-py-archiver CN.PGC..HH? PQ.DAOB..HH? \
     --archive /data/sds \
     --state-file /var/lib/slarchiver/state.txt \
     --log-file /var/log/slarchiver.log
 
 # Replay a historical window from the server's ring buffer
-seedlink-py-archiver AM.RA382..EHZ \
+seedlink-py-archiver IU.ANMO.00.BHZ \
     --archive /data/sds \
     --begin-time 2026-04-14T12:00:00 \
     --end-time   2026-04-14T13:00:00
 
-# Subscribe to every station in the AM network (single-quote to stop the shell
+# Subscribe to every station in the PQ network (single-quote to stop the shell
 # from globbing the asterisk before argparse sees it)
-seedlink-py-archiver 'AM.*..EH?' --archive /data/sds --expand-wildcards
+seedlink-py-archiver 'PQ.*..HH?' --archive /data/sds --expand-wildcards
 ```
 
 **Stream syntax.** `NET.STA.LOC.CHA`, with `?` and `*` wildcards allowed in LOC and CHA
@@ -252,8 +246,7 @@ After=network.target
 Type=simple
 User=seismo
 ExecStart=/opt/conda/envs/seedlink-py-utils/bin/seedlink-py-archiver \
-    AM.RA382..EH? AM.RA481..EH? PQ.DAOB..HH? \
-    --server seiscomp.hakai.org:18000 \
+    CN.PGC..HH? PQ.DAOB..HH? \
     --archive /data/sds \
     --state-file /var/lib/slarchiver/state.txt \
     --log-file /var/log/slarchiver.log
@@ -280,10 +273,10 @@ seedlink-py-info -I
 seedlink-py-info -L
 
 # All streams (NSLC + sample-rate + time range), filtered to one network
-seedlink-py-info -Q --network AM
+seedlink-py-info -Q --network PQ
 
-# Streams for one station as JSON, against IRIS instead of the default
-seedlink-py-info -Q --station ANMO --json rtserve.iris.washington.edu:18000
+# Streams for one station as JSON
+seedlink-py-info -Q --station ANMO --json
 
 # Recent gaps (server-dependent — many SeisComP installs disable this)
 seedlink-py-info -G
@@ -292,8 +285,8 @@ seedlink-py-info -G
 seedlink-py-info -C
 ```
 
-The default server is `seiscomp.hakai.org:18000`, matching the archiver. Pass any
-other `host:port` as a positional argument.
+The default server is `rtserve.iris.washington.edu:18000`. Pass any other
+`host:port` as a positional argument.
 
 Run `seedlink-py-info --help` for the full list of options.
 
@@ -305,24 +298,21 @@ OK / LAG / STALE status. Leave it running in a spare terminal or on a side
 monitor to keep an eye on which streams are actually flowing.
 
 ```bash
-# Default server, 30 s interval
+# Default server (IRIS), 30 s interval
 seedlink-py-dashboard
 
-# Against IRIS
-seedlink-py-dashboard rtserve.iris.washington.edu:18000
-
-# Just the Shakes, faster polling
-seedlink-py-dashboard --network AM --interval 10
+# Just PQ stations, faster polling
+seedlink-py-dashboard --network PQ --interval 10
 
 # One station's channels
-seedlink-py-dashboard --station DAOB
+seedlink-py-dashboard --station ANMO
 
 # Verticals only — one row per station (channels at a station usually share
 # latency, so this is the compact fleet-overview view)
-seedlink-py-dashboard --channel EHZ
+seedlink-py-dashboard --channel BHZ
 
 # Wildcards in the channel filter (quote to stop the shell from globbing)
-seedlink-py-dashboard --network AM --channel 'HH?'
+seedlink-py-dashboard --network CN --channel 'HH?'
 seedlink-py-dashboard --channel '*Z'
 
 # Single snapshot — scriptable, no screen clear
@@ -367,9 +357,7 @@ Run `seedlink-py-dashboard --help` for the full list of options.
 from seedlink_py_utils import ViewerConfig, run_viewer
 
 cfg = ViewerConfig(
-    nslc=("AM", "RA382", "00", "EHZ"),
-    seedlink_server="seiscomp.hakai.org:18000",
-    fdsn_server="http://seiscomp.hakai.org/fdsnws",
+    nslc=("IU", "ANMO", "00", "BHZ"),
     buffer_seconds=300,
     dark_mode=True,
     picker_preset="local",     # optional — enables STA/LTA picker
@@ -382,8 +370,7 @@ from seedlink_py_utils.logging_setup import setup_logger
 
 setup_logger(log_file="/var/log/slarchiver.log")
 run_archiver(
-    server="seiscomp.hakai.org:18000",
-    streams=["AM.RA382..EH?", "PQ.DAOB..HH?"],
+    streams=["CN.PGC..HH?", "PQ.DAOB..HH?"],
     archive_root="/data/sds",
     state_file="/var/lib/slarchiver/state.txt",
 )
@@ -392,8 +379,8 @@ run_archiver(
 from seedlink_py_utils import query_info
 from seedlink_py_utils.info import parse_streams, filter_records
 
-xml = query_info("seiscomp.hakai.org:18000", level="STREAMS")
-streams = filter_records(parse_streams(xml), network="AM")
+xml = query_info("rtserve.iris.washington.edu:18000", level="STREAMS")
+streams = filter_records(parse_streams(xml), network="PQ")
 for s in streams:
     print(s["network"], s["station"], s["location"], s["channel"])
 
@@ -401,10 +388,9 @@ for s in streams:
 from seedlink_py_utils import DashboardConfig, run_dashboard
 
 run_dashboard(DashboardConfig(
-    server="seiscomp.hakai.org:18000",
     interval=10.0,
-    network="AM",
-    channel="EHZ",     # one row per station
+    network="PQ",
+    channel="HHZ",     # one row per station
 ))
 ```
 
@@ -412,9 +398,9 @@ run_dashboard(DashboardConfig(
 
 | Flag | Default | Description |
 |---|---|---|
-| `stream` (positional) | — | `NET.STA.LOC.CHA`, e.g. `AM.RA382.00.EHZ` |
-| `--server`, `-s` | `seiscomp.hakai.org:18000` | SeedLink server `host:port` |
-| `--fdsn` | `http://seiscomp.hakai.org/fdsnws` | FDSN-WS base URL (empty string to disable) |
+| `stream` (positional) | — | `NET.STA.LOC.CHA`, e.g. `IU.ANMO.00.BHZ` |
+| `--server`, `-s` | `rtserve.iris.washington.edu:18000` | SeedLink server `host:port` |
+| `--fdsn` | `https://service.earthscope.org` | FDSN-WS base URL (empty string to disable) |
 | `--inventory` | — | Local StationXML file (overrides `--fdsn`) |
 | `--no-cache` | off | Skip the on-disk inventory cache |
 | `--buffer`, `-b` | `300` | Rolling buffer length (seconds) |
@@ -508,7 +494,7 @@ field of whichever preset you chose; the detection filter is preset-locked
 | Flag | Default | Description |
 |---|---|---|
 | `streams` (positional, 1+) | — | One or more `NET.STA.LOC.CHA` (wildcards in LOC/CHA) |
-| `--server`, `-s` | `seiscomp.hakai.org:18000` | SeedLink server `host:port` |
+| `--server`, `-s` | `rtserve.iris.washington.edu:18000` | SeedLink server `host:port` |
 | `--archive`, `-a` | — (required) | SDS archive root directory |
 | `--state-file` | — | SeedLink state file for resume on restart |
 | `--begin-time` | — | Replay window start (ISO 8601) |
@@ -523,7 +509,7 @@ field of whichever preset you chose; the detection filter is preset-locked
 
 | Flag | Default | Description |
 |---|---|---|
-| `server` (positional) | `seiscomp.hakai.org:18000` | SeedLink server `host:port` |
+| `server` (positional) | `rtserve.iris.washington.edu:18000` | SeedLink server `host:port` |
 | `-I`, `--id` | — | Server identification + version |
 | `-L`, `--stations` | — | List stations |
 | `-Q`, `--streams` | — | List streams (NSLC + sample-rate + time range) |
@@ -541,7 +527,7 @@ Exactly one of `-I/-L/-Q/-G/-C` is required.
 
 | Flag | Default | Description |
 |---|---|---|
-| `server` (positional) | `seiscomp.hakai.org:18000` | SeedLink server `host:port` |
+| `server` (positional) | `rtserve.iris.washington.edu:18000` | SeedLink server `host:port` |
 | `--interval` | `30` | Poll interval in seconds |
 | `--once` | off | Run one poll and exit (no screen clear) |
 | `--timeout` | `30` | Per-poll socket timeout (seconds) |
@@ -556,9 +542,9 @@ Exactly one of `-I/-L/-Q/-G/-C` is required.
 ## Notes
 
 **FDSN behind an nginx reverse proxy.** If your FDSN service is mounted at a path like
-`/fdsnws` via a reverse proxy, you need to include that path in `--fdsn`
-(e.g. `http://seiscomp.hakai.org/fdsnws`). The package uses `service_mappings` so the
-URL is used exactly as given, without appending a second `/fdsnws/`.
+`/fdsnws` via a reverse proxy, you need to include that path in `--fdsn`. The package
+tries standard FDSN service discovery first, then falls back to explicit
+`service_mappings` with the path as given.
 
 **Inventory caching.** On first run the StationXML response is fetched and cached as
 `./inv_<NET>_<STA>_<CHA>.xml`. Delete that file (or use `--no-cache`) to force a refresh.

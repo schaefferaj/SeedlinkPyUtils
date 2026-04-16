@@ -19,15 +19,14 @@ def build_parser():
         formatter_class=_Formatter,
         epilog=(
             "Examples:\n"
-            "  seedlink-py-archiver AM.RA382..EH? --archive /data/sds\n"
+            "  seedlink-py-archiver IU.ANMO.00.BH? --archive /data/sds\n"
             "\n"
-            "  seedlink-py-archiver AM.RA382..EH? AM.RA481..EH? PQ.DAOB..HH? \\\n"
-            "      --server seiscomp.hakai.org:18000 \\\n"
+            "  seedlink-py-archiver CN.PGC..HH? PQ.DAOB..HH? \\\n"
             "      --archive /data/sds \\\n"
             "      --state-file /var/lib/slarchiver/state.txt \\\n"
             "      --log-file /var/log/slarchiver.log\n"
             "\n"
-            "  seedlink-py-archiver 'AM.*..EH?' --archive /data/sds --expand-wildcards\n"
+            "  seedlink-py-archiver 'PQ.*..HH?' --archive /data/sds --expand-wildcards\n"
             "\n"
             "Stream syntax: NET.STA.LOC.CHA, with ? / * wildcards allowed in LOC and CHA\n"
             "natively. Wildcards in NET or STA require --expand-wildcards (one extra\n"
@@ -37,12 +36,12 @@ def build_parser():
     )
 
     p.add_argument("streams", nargs="+",
-                   help="One or more streams in NET.STA.LOC.CHA form "
-                        "(wildcards ? / * allowed in LOC/CHA).")
+                   help="One or more streams in NET.STA.LOC.CHA form,\n"
+                        "e.g. IU.ANMO.00.BHZ (wildcards ? / * allowed in LOC/CHA).")
 
     # ---- Server & output --------------------------------------------------
     g_io = p.add_argument_group("Server & output")
-    g_io.add_argument("--server", "-s", default="seiscomp.hakai.org:18000",
+    g_io.add_argument("--server", "-s", default="rtserve.iris.washington.edu:18000",
                       help="SeedLink server host:port.")
     g_io.add_argument("--archive", "-a", required=True,
                       help="Root directory of the SDS archive.")

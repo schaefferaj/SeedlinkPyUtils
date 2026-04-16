@@ -79,13 +79,13 @@ def build_parser():
     )
     p.add_argument("stream", type=parse_nslc,
                    help="Stream in NET.STA.LOC.CHA format "
-                        "(e.g. AM.RA382.00.EHZ or PQ.DAOB..HHZ).")
+                        "(e.g. IU.ANMO.00.BHZ or PQ.DAOB..HHZ).")
 
     # ---- Data source ------------------------------------------------------
     g_src = p.add_argument_group("Data source")
-    g_src.add_argument("--server", "-s", default="seiscomp.hakai.org:18000",
+    g_src.add_argument("--server", "-s", default="rtserve.iris.washington.edu:18000",
                        help="SeedLink server host:port.")
-    g_src.add_argument("--fdsn", default="http://seiscomp.hakai.org/fdsnws",
+    g_src.add_argument("--fdsn", default="https://service.earthscope.org",
                        help="FDSN web-service base URL for response metadata. "
                             "Set to '' to skip response removal (plot counts).")
     g_src.add_argument("--inventory", default=None,
