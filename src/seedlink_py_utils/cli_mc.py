@@ -35,18 +35,18 @@ def build_parser():
         formatter_class=_Formatter,
         epilog=(
             "Examples:\n"
-            "  seedlink-py-mc-viewer PQ.DAOB..HH?                  # 3-component on one station\n"
+            "  seedlink-py-mc-viewer IU.ANMO.00.BH?                # 3-component on one station\n"
             "\n"
             "  seedlink-py-mc-viewer CN.PGC..HHZ CN.NLLB..HHZ \\\n"
-            "      PQ.DAOB..HHZ --picker local                     # explicit list, verticals\n"
+            "      CN.SADO..HHZ --picker local                     # explicit list, verticals\n"
             "\n"
-            "  seedlink-py-mc-viewer 'PQ.*..HHZ' --picker local    # every PQ vertical\n"
+            "  seedlink-py-mc-viewer 'CN.*..HHZ' --picker local    # every CN vertical\n"
             "\n"
             "Stream syntax: NET.STA.LOC.CHA with ? / * wildcards allowed in any field.\n"
             "Any wildcard triggers a one-shot INFO=STREAMS query at startup to expand\n"
             "into the concrete list of matching channels (one panel per match). Quote\n"
             "specs with wildcards to stop the shell from globbing them. Empty LOC is\n"
-            "written as two dots, e.g. PQ.DAOB..HHZ."
+            "written as two dots, e.g. CN.PGC..HHZ."
         ),
     )
 

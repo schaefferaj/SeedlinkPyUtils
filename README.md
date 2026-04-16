@@ -48,9 +48,9 @@ built on [ObsPy](https://docs.obspy.org). Provides:
 - Supports any combination of stations and channels. Wildcards (`?`, `*`)
   in any NSLC field auto-expand via a one-shot `INFO=STREAMS` query at
   startup, with one panel per matched channel:
-  - 3-component of one station: `PQ.DAOB..HH?` → 3 panels (HHZ / HHN / HHE)
-  - Vertical-only across a set: `CN.PGC..HHZ CN.NLLB..HHZ PQ.DAOB..HHZ`
-  - Network sweep: `'PQ.*..HHZ'` → N panels (every PQ vertical)
+  - 3-component of one station: `IU.ANMO.00.BH?` → 3 panels (BHZ / BHN / BHE)
+  - Vertical-only across a set: `CN.PGC..HHZ CN.NLLB..HHZ CN.SADO..HHZ`
+  - Network sweep: `'CN.*..HHZ'` → N panels (every CN vertical)
 - Shares the same filter and picker presets as the single-channel viewer
 - Independent picker per panel when `--picker` is given — per-station
   triggers appear as red markers on their own panel at the right time
@@ -175,13 +175,13 @@ After installation, the `seedlink-py-viewer` command is on your path.
 ```bash
 # Basic: stream in NET.STA.LOC.CHA form (empty LOC uses double dots)
 seedlink-py-viewer IU.ANMO.00.BHZ
-seedlink-py-viewer PQ.DAOB..HHZ
+seedlink-py-viewer CN.PGC..HHZ
 
 # Dark mode, fullscreen (press Esc to exit)
 seedlink-py-viewer IU.ANMO.00.BHZ --dark-mode --fullscreen
 
 # Lock to a preset filter — hides the dropdown selector
-seedlink-py-viewer PQ.DAOB..HHZ --filter hp3
+seedlink-py-viewer CN.PGC..HHZ --filter hp3
 
 # Teleseismic P-wave view on a broadband — --pre-filt is auto-lowered for
 # 'surface' and 'tele-p' so the response removal doesn't mute the band
@@ -198,7 +198,7 @@ seedlink-py-viewer IU.ANMO.00.BHZ --picker local --sta 0.3 --lta 8
 seedlink-py-viewer AM.RXXXX.00.EHZ --server rs.local:18000 --fdsn ''
 
 # Use a local StationXML instead of fetching from FDSN
-seedlink-py-viewer PQ.DAOB..HHZ --inventory ./my_inventory.xml
+seedlink-py-viewer CN.PGC..HHZ --inventory ./my_inventory.xml
 ```
 
 Run `seedlink-py-viewer --help` for the full list of options.
@@ -213,14 +213,14 @@ apply.
 
 ```bash
 # Three components of one station
-seedlink-py-mc-viewer PQ.DAOB..HH?
+seedlink-py-mc-viewer IU.ANMO.00.BH?
 
 # Verticals from a hand-picked set of stations with a local picker
-seedlink-py-mc-viewer CN.PGC..HHZ CN.NLLB..HHZ PQ.DAOB..HHZ \
+seedlink-py-mc-viewer CN.PGC..HHZ CN.NLLB..HHZ CN.SADO..HHZ \
     --picker local
 
-# Every PQ vertical — wildcards auto-expand via INFO=STREAMS
-seedlink-py-mc-viewer 'PQ.*..HHZ' --picker local
+# Every CN vertical — wildcards auto-expand via INFO=STREAMS
+seedlink-py-mc-viewer 'CN.*..HHZ' --picker local
 
 # Tele-P-band view of IU.ANMO with picker on
 seedlink-py-mc-viewer IU.ANMO.00.BH? --filter tele-p --picker tele-p
@@ -244,7 +244,7 @@ and the server will backfill anything it still has buffered.
 seedlink-py-archiver IU.ANMO.00.BH? --archive /data/sds
 
 # Multiple stations with state file and rotating log
-seedlink-py-archiver CN.PGC..HH? PQ.DAOB..HH? \
+seedlink-py-archiver CN.PGC..HH? CN.NLLB..HH? \
     --archive /data/sds \
     --state-file /var/lib/slarchiver/state.txt \
     --log-file /var/log/slarchiver.log
@@ -255,14 +255,14 @@ seedlink-py-archiver IU.ANMO.00.BHZ \
     --begin-time 2026-04-14T12:00:00 \
     --end-time   2026-04-14T13:00:00
 
-# Subscribe to every station in the PQ network (single-quote to stop the shell
+# Subscribe to every station in the CN network (single-quote to stop the shell
 # from globbing the asterisk before argparse sees it)
-seedlink-py-archiver 'PQ.*..HH?' --archive /data/sds --expand-wildcards
+seedlink-py-archiver 'CN.*..HH?' --archive /data/sds --expand-wildcards
 ```
 
 **Stream syntax.** `NET.STA.LOC.CHA`, with `?` and `*` wildcards allowed in LOC and CHA
 natively (SeedLink's own multiselect). Empty LOC is written as two dots (e.g.
-`PQ.DAOB..HHZ`). Wildcards in NET or STA are *not* part of the SeedLink protocol —
+`CN.PGC..HHZ`). Wildcards in NET or STA are *not* part of the SeedLink protocol —
 the `--expand-wildcards` flag works around this by issuing a one-shot `INFO=STREAMS`
 query at startup and substituting the matching explicit station list before
 subscribing. Quote any wildcard spec on the command line so the shell doesn't
@@ -288,7 +288,7 @@ After=network.target
 Type=simple
 User=seismo
 ExecStart=/opt/conda/envs/seedlink-py-utils/bin/seedlink-py-archiver \
-    CN.PGC..HH? PQ.DAOB..HH? \
+    CN.PGC..HH? CN.NLLB..HH? \
     --archive /data/sds \
     --state-file /var/lib/slarchiver/state.txt \
     --log-file /var/log/slarchiver.log
@@ -315,7 +315,7 @@ seedlink-py-info -I
 seedlink-py-info -L
 
 # All streams (NSLC + sample-rate + time range), filtered to one network
-seedlink-py-info -Q --network PQ
+seedlink-py-info -Q --network CN
 
 # Streams for one station as JSON
 seedlink-py-info -Q --station ANMO --json
@@ -343,8 +343,8 @@ monitor to keep an eye on which streams are actually flowing.
 # Default server (IRIS), 30 s interval
 seedlink-py-dashboard
 
-# Just PQ stations, faster polling
-seedlink-py-dashboard --network PQ --interval 10
+# Just CN stations, faster polling
+seedlink-py-dashboard --network CN --interval 10
 
 # One station's channels
 seedlink-py-dashboard --station ANMO
@@ -405,13 +405,13 @@ performance in real time.
 seedlink-py-ppsd IU.ANMO.00.BHZ
 
 # Dark mode, fullscreen (press Esc to exit)
-seedlink-py-ppsd PQ.DAOB..HHZ -d -f
+seedlink-py-ppsd CN.PGC..HHZ -d -f
 
 # Sliding 24 h window — older PSDs drop off the histogram
 seedlink-py-ppsd CN.PGC..HHZ --max-hours 24
 
 # Use a local StationXML instead of fetching from FDSN
-seedlink-py-ppsd PQ.DAOB..HHZ --inventory ./my_inventory.xml
+seedlink-py-ppsd CN.PGC..HHZ --inventory ./my_inventory.xml
 
 # More aggressive backfill to populate the histogram faster at startup
 # (server ring buffer must actually cover this window; most do)
@@ -469,16 +469,16 @@ crashes with at most `--render-interval` worth of new data lost.
 # Simplest case: weekly PPSDs for one station, defaults everywhere
 seedlink-py-ppsd-archive IU.ANMO.00.BHZ --output-root /data/ppsd
 
-# Daily + weekly + monthly at once for every PQ vertical
-seedlink-py-ppsd-archive 'PQ.*..HHZ' \
+# Daily + weekly + monthly at once for every CN vertical
+seedlink-py-ppsd-archive 'CN.*..HHZ' \
     --output-root /data/ppsd \
     --period daily weekly monthly \
     --expand-wildcards
 
-# Hakai SchoolShake fleet against the SeisComP server, rotating log
-seedlink-py-ppsd-archive 'AM.*..EH?' \
-    --server seiscomp.hakai.org:18000 \
-    --fdsn http://seiscomp.hakai.org/fdsnws \
+# Long-running fleet on a non-default SeedLink server, with rotating log
+seedlink-py-ppsd-archive 'CN.*..HH?' \
+    --server seedlink.example.org:18000 \
+    --fdsn https://fdsn.example.org \
     --output-root /data/ppsd \
     --period weekly monthly \
     --expand-wildcards \
@@ -527,7 +527,7 @@ After=network.target
 Type=simple
 User=seismo
 ExecStart=/opt/conda/envs/seedlink-py-utils/bin/seedlink-py-ppsd-archive \
-    'PQ.*..HHZ' 'CN.*..HHZ' \
+    'CN.*..HHZ' \
     --output-root /data/ppsd \
     --period weekly monthly \
     --expand-wildcards \
@@ -566,7 +566,7 @@ from seedlink_py_utils.logging_setup import setup_logger
 
 setup_logger(log_file="/var/log/slarchiver.log")
 run_archiver(
-    streams=["CN.PGC..HH?", "PQ.DAOB..HH?"],
+    streams=["CN.PGC..HH?", "CN.NLLB..HH?"],
     archive_root="/data/sds",
     state_file="/var/lib/slarchiver/state.txt",
 )
@@ -576,7 +576,7 @@ from seedlink_py_utils import query_info
 from seedlink_py_utils.info import parse_streams, filter_records
 
 xml = query_info("rtserve.iris.washington.edu:18000", level="STREAMS")
-streams = filter_records(parse_streams(xml), network="PQ")
+streams = filter_records(parse_streams(xml), network="CN")
 for s in streams:
     print(s["network"], s["station"], s["location"], s["channel"])
 
@@ -585,7 +585,7 @@ from seedlink_py_utils import DashboardConfig, run_dashboard
 
 run_dashboard(DashboardConfig(
     interval=10.0,
-    network="PQ",
+    network="CN",
     channel="HHZ",     # one row per station
 ))
 
@@ -602,7 +602,7 @@ run_ppsd(PPSDConfig(
 from seedlink_py_utils import PPSDArchiveConfig, run_ppsd_archive
 
 run_ppsd_archive(PPSDArchiveConfig(
-    streams=["PQ.*..HHZ", "CN.*..HHZ"],
+    streams=["CN.*..HHZ"],
     output_root="/data/ppsd",
     periods=("daily", "weekly", "monthly"),
     expand_wildcards=True,

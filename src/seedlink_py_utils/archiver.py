@@ -191,7 +191,7 @@ def run_archiver(
     server : str
         SeedLink server as 'host:port'.
     streams : list of str
-        NSLC specs like 'AM.RA382..EH?'. Wildcards allowed in LOC/CHA, and
+        NSLC specs like 'CN.PGC..HH?'. Wildcards allowed in LOC/CHA, and
         also in NET/STA when ``expand_wildcards=True``.
     archive_root : str
         Root directory of the SDS archive.

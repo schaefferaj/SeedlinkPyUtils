@@ -28,7 +28,7 @@ def build_parser():
             "Examples:\n"
             "  seedlink-py-ppsd IU.ANMO.00.BHZ                      # defaults (IRIS + EarthScope)\n"
             "\n"
-            "  seedlink-py-ppsd PQ.DAOB..HHZ --dark-mode --fullscreen\n"
+            "  seedlink-py-ppsd CN.PGC..HHZ --dark-mode --fullscreen\n"
             "\n"
             "  seedlink-py-ppsd CN.PGC..HHZ --max-hours 24          # sliding 24h window\n"
             "\n"
@@ -47,7 +47,7 @@ def build_parser():
 
     p.add_argument("stream", type=parse_nslc,
                    help="Stream in NET.STA.LOC.CHA format "
-                        "(e.g. IU.ANMO.00.BHZ or PQ.DAOB..HHZ).")
+                        "(e.g. IU.ANMO.00.BHZ or CN.PGC..HHZ).")
 
     # ---- Data source ------------------------------------------------------
     g_src = p.add_argument_group("Data source")

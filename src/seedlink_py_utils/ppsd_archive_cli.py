@@ -44,16 +44,16 @@ def build_parser():
             "  # Weekly PPSDs for a single station, defaults everywhere\n"
             "  seedlink-py-ppsd-archive IU.ANMO.00.BHZ --output-root /data/ppsd\n"
             "\n"
-            "  # Daily + weekly + monthly for every PQ vertical\n"
-            "  seedlink-py-ppsd-archive 'PQ.*..HHZ' \\\n"
+            "  # Daily + weekly + monthly for every CN vertical\n"
+            "  seedlink-py-ppsd-archive 'CN.*..HHZ' \\\n"
             "      --output-root /data/ppsd \\\n"
             "      --period daily weekly monthly \\\n"
             "      --expand-wildcards\n"
             "\n"
-            "  # Long-running Hakai SchoolShake fleet, with rotating log\n"
-            "  seedlink-py-ppsd-archive 'AM.*..EH?' \\\n"
-            "      --server seiscomp.hakai.org:18000 \\\n"
-            "      --fdsn http://seiscomp.hakai.org/fdsnws \\\n"
+            "  # Long-running fleet on a non-default server, with rotating log\n"
+            "  seedlink-py-ppsd-archive 'CN.*..HH?' \\\n"
+            "      --server seedlink.example.org:18000 \\\n"
+            "      --fdsn https://fdsn.example.org \\\n"
             "      --output-root /data/ppsd \\\n"
             "      --period weekly monthly \\\n"
             "      --expand-wildcards \\\n"
@@ -126,7 +126,7 @@ def build_parser():
                         help="Expand ? / * in NET and STA via a one-shot\n"
                              "INFO=STREAMS query at startup. Quote\n"
                              "wildcarded specs so the shell doesn't\n"
-                             "glob them (e.g. 'PQ.*..HHZ').")
+                             "glob them (e.g. 'CN.*..HHZ').")
 
     # ---- Appearance ---------------------------------------------------
     g_app = p.add_argument_group("Appearance")

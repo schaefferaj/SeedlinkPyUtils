@@ -8,7 +8,7 @@ from .viewer import run_viewer
 
 
 def parse_nslc(s):
-    """Parse a NET.STA.LOC.CHA string. Empty LOC (e.g. 'PQ.DAOB..HHZ') allowed."""
+    """Parse a NET.STA.LOC.CHA string. Empty LOC (e.g. 'CN.PGC..HHZ') allowed."""
     parts = s.split(".")
     if len(parts) != 4:
         raise argparse.ArgumentTypeError(
@@ -79,7 +79,7 @@ def build_parser():
     )
     p.add_argument("stream", type=parse_nslc,
                    help="Stream in NET.STA.LOC.CHA format "
-                        "(e.g. IU.ANMO.00.BHZ or PQ.DAOB..HHZ).")
+                        "(e.g. IU.ANMO.00.BHZ or CN.PGC..HHZ).")
 
     # ---- Data source ------------------------------------------------------
     g_src = p.add_argument_group("Data source")

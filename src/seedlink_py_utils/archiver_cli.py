@@ -21,17 +21,17 @@ def build_parser():
             "Examples:\n"
             "  seedlink-py-archiver IU.ANMO.00.BH? --archive /data/sds\n"
             "\n"
-            "  seedlink-py-archiver CN.PGC..HH? PQ.DAOB..HH? \\\n"
+            "  seedlink-py-archiver CN.PGC..HH? CN.NLLB..HH? \\\n"
             "      --archive /data/sds \\\n"
             "      --state-file /var/lib/slarchiver/state.txt \\\n"
             "      --log-file /var/log/slarchiver.log\n"
             "\n"
-            "  seedlink-py-archiver 'PQ.*..HH?' --archive /data/sds --expand-wildcards\n"
+            "  seedlink-py-archiver 'CN.*..HH?' --archive /data/sds --expand-wildcards\n"
             "\n"
             "Stream syntax: NET.STA.LOC.CHA, with ? / * wildcards allowed in LOC and CHA\n"
             "natively. Wildcards in NET or STA require --expand-wildcards (one extra\n"
             "INFO=STREAMS query at startup). Empty LOC is written as two dots,\n"
-            "e.g. PQ.DAOB..HHZ."
+            "e.g. CN.PGC..HHZ."
         ),
     )
 

@@ -2,7 +2,7 @@
 
 One panel per subscribed NSLC, stacked vertically. Typical use cases:
 
-- One station, three components (``PQ.DAOB..HH?``): stacked Z/N/E panels.
+- One station, three components (``IU.ANMO.00.BH?``): stacked Z/N/E panels.
 - Vertical-only from a selection of stations: one Z panel per station.
 - A mixed list of streams with explicit LOC/CHA.
 
@@ -200,7 +200,7 @@ def run_viewer_mc(cfg: ViewerConfig):
     if n_panels == 1:
         header = f"{_nslc_label(streams[0])} — live from {cfg.seedlink_server}"
     else:
-        # Show the set compactly: e.g. "AM.RA382..EHZ +3 others"
+        # Show the set compactly: e.g. "CN.PGC..HHZ +3 others"
         header = (f"{_nslc_label(streams[0])} +{n_panels - 1} other"
                   f"{'s' if n_panels - 1 != 1 else ''}"
                   f" — live from {cfg.seedlink_server}")
@@ -218,7 +218,7 @@ def run_viewer_mc(cfg: ViewerConfig):
             net, sta, loc, cha = panel.nslc
             # For LOC/CHA wildcards, fall back to a looser match by
             # (NET, STA) — first trace found is what we draw. Good enough
-            # for the common "PQ.DAOB..HH?" case where only one channel
+            # for the common "CN.PGC..HH?" case where only one channel
             # per panel usually matches a wildcard when streams are listed
             # one per panel (not HH? within one panel).
             tr_raw = panel_axes and tracebuf.latest_nslc(net, sta, loc, cha)
