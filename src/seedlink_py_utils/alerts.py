@@ -35,6 +35,7 @@ def post_webhook(
     event: str,
     hostname: str,
     timeout: float = 10.0,
+    color: Optional[str] = None,
     **fields,
 ) -> None:
     """POST a Slack-compatible JSON body to *url*.
@@ -51,11 +52,20 @@ def post_webhook(
         Source label for the alert.
     timeout : float
         HTTP request timeout in seconds.
+    color : str, optional
+        Hex colour for the Slack attachment sidebar (e.g. ``"#cc0000"``).
+        When set, the payload uses Slack's ``attachments`` format which
+        renders a coloured vertical bar beside the message. When None,
+        the payload uses a plain ``text`` body (no colour).
     **fields
         Extra key/value pairs merged into the JSON body (e.g.
         ``nslc="CN.PGC..HHZ"``, ``age_seconds=412.3``).
     """
-    payload = {"text": text, "event": event, "hostname": hostname, **fields}
+    meta = {"event": event, "hostname": hostname, **fields}
+    if color:
+        payload = {"attachments": [{"color": color, "text": text, **meta}]}
+    else:
+        payload = {"text": text, **meta}
     body = json.dumps(payload).encode("utf-8")
     req = urllib_request.Request(
         url,

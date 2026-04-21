@@ -211,6 +211,7 @@ class StaleWatcher:
         self._post_webhook(
             text=text,
             event="stale",
+            color="#cc0000",
             nslc=nslc,
             age_seconds=round(age, 1),
             threshold_seconds=self.cfg.stale_timeout,
@@ -219,12 +220,11 @@ class StaleWatcher:
     def _on_healthy(self, nslc: str, from_status: str) -> None:
         if from_status == UNKNOWN:
             log.info(f"[{self._hostname}] first packet: {nslc}")
-            # Don't webhook on the very first packet — it's a startup event,
-            # not an alert-worthy transition.
             return
         text = f"[{self._hostname}] RECOVERED: {nslc} — data flowing again"
         log.info(text)
-        self._post_webhook(text=text, event="recovered", nslc=nslc)
+        self._post_webhook(text=text, event="recovered", color="#2eb67d",
+                           nslc=nslc)
 
     def _post_webhook(self, *, text: str, event: str, **fields) -> None:
         if not self.cfg.webhook_url:

@@ -343,6 +343,14 @@ def _worst_status(statuses) -> str:
     return min(statuses, key=lambda s: _STATUS_RANK.get(s, 99))
 
 
+_WEBHOOK_COLOR = {
+    "STALE": "#cc0000",   # red
+    "LAG":   "#ff9900",   # orange
+    "OK":    "#2eb67d",   # green
+    "UNKNOWN": "#888888", # grey
+}
+
+
 class DashboardAlerter:
     """Track per-station status across dashboard polls and emit alerts.
 
@@ -410,6 +418,7 @@ class DashboardAlerter:
                 self._webhook_url, text=full_text, event=direction,
                 hostname=self._hostname, station=station,
                 previous_status=prev, new_status=now,
+                color=_WEBHOOK_COLOR.get(now),
                 timeout=self._webhook_timeout,
             )
 
