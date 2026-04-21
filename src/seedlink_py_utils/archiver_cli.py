@@ -5,6 +5,7 @@ import logging
 
 from .archiver import run_archiver
 from .logging_setup import setup_logger
+from .monitor import MonitorConfig
 
 
 class _Formatter(argparse.RawTextHelpFormatter,
@@ -73,6 +74,35 @@ def build_parser():
                              "server's INFO=STREAMS at startup. Quote the spec\n"
                              "to stop the shell from globbing it (e.g. 'AM.*..EH?').")
 
+    # ---- Monitoring -------------------------------------------------------
+    g_mon = p.add_argument_group("Monitoring (stale-stream watchdog)")
+    g_mon.add_argument("--monitor", action="store_true",
+                       help="Enable the per-NSLC stale-stream watchdog.\n"
+                            "Alerts go to the logger (always) and optionally\n"
+                            "to a Slack-compatible webhook. See\n"
+                            "docs/slack-webhook.md for webhook setup and\n"
+                            "docs/systemd.md for pairing with systemd auto-\n"
+                            "restart.")
+    g_mon.add_argument("--stale-timeout", type=float, default=300.0,
+                       help="Seconds without a packet before an NSLC is\n"
+                            "classified STALE and alerted.")
+    g_mon.add_argument("--monitor-interval", type=float, default=60.0,
+                       help="Seconds between watchdog checks. Must be less\n"
+                            "than --stale-timeout.")
+    g_mon.add_argument("--webhook",
+                       help="Slack-compatible incoming-webhook URL. The\n"
+                            "watcher POSTs a JSON body with 'text' (human-\n"
+                            "readable) and structured fields (event, nslc,\n"
+                            "age_seconds, ...). Slack ignores unknown fields.")
+    g_mon.add_argument("--webhook-timeout", type=float, default=10.0,
+                       help="Per-request timeout for the webhook POST.")
+    g_mon.add_argument("--exit-on-all-stale", action="store_true",
+                       help="Exit with status 2 when every registered NSLC\n"
+                            "is STALE. Intended to pair with a systemd\n"
+                            "Restart=on-failure unit.")
+    g_mon.add_argument("--hostname",
+                       help="Label used in alert text (default: host FQDN).")
+
     # ---- Logging ----------------------------------------------------------
     g_log = p.add_argument_group("Logging")
     g_log.add_argument("--log-file",
@@ -93,6 +123,22 @@ def main(argv=None):
         level=getattr(logging, args.log_level),
     )
 
+    monitor_config = None
+    if args.monitor or args.webhook:
+        if args.monitor_interval >= args.stale_timeout:
+            raise SystemExit(
+                "--monitor-interval must be less than --stale-timeout "
+                f"({args.monitor_interval} >= {args.stale_timeout})."
+            )
+        monitor_config = MonitorConfig(
+            stale_timeout=args.stale_timeout,
+            check_interval=args.monitor_interval,
+            webhook_url=args.webhook,
+            webhook_timeout=args.webhook_timeout,
+            exit_on_all_stale=args.exit_on_all_stale,
+            hostname=args.hostname,
+        )
+
     run_archiver(
         server=args.server,
         streams=args.streams,
@@ -103,6 +149,7 @@ def main(argv=None):
         reconnect_wait=args.reconnect_wait,
         max_reconnects=args.max_reconnects,
         expand_wildcards=args.expand_wildcards,
+        monitor_config=monitor_config,
     )
 
 

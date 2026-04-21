@@ -14,16 +14,21 @@ them.
 
 import dataclasses
 import fnmatch
+import logging
 import shutil
 import sys
 import time
 from collections import Counter
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from obspy import UTCDateTime
 
+from .alerts import post_webhook, resolve_hostname
 from .info import filter_records, parse_streams, query_info
+
+
+log = logging.getLogger("seedlink_py_utils.dashboard")
 
 
 # ANSI escape sequences. Kept as module-level constants so tests can
@@ -62,6 +67,10 @@ class DashboardConfig:
     timeout: float = 30.0            # per-poll socket timeout, seconds
     sort_by_status: bool = False     # group rows by status (STALE first);
                                      # alphabetical NSLC within each group
+    alert: bool = False              # enable transition alerting
+    webhook_url: Optional[str] = None
+    webhook_timeout: float = 10.0
+    hostname: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +332,89 @@ def _sort_key_by_status(r: dict):
 
 
 # ---------------------------------------------------------------------------
+# Transition alerting
+# ---------------------------------------------------------------------------
+
+def _worst_status(statuses) -> str:
+    """Return the worst status from an iterable, using _STATUS_RANK ordering.
+
+    _STATUS_RANK: STALE=0, LAG=1, UNKNOWN=2, OK=3 — lower is worse.
+    """
+    return min(statuses, key=lambda s: _STATUS_RANK.get(s, 99))
+
+
+class DashboardAlerter:
+    """Track per-station status across dashboard polls and emit alerts.
+
+    Status is aggregated at the station level (NET.STA): the station's
+    status is the worst of its channels (STALE > LAG > UNKNOWN > OK).
+    Webhooks fire on any station-level status change (OK -> LAG,
+    LAG -> STALE, and recoveries). First sighting is baseline only.
+
+    Each webhook message includes all channels of the station with their
+    individual status and latency, so the operator has full context
+    without a second query.
+    """
+
+    def __init__(self, cfg: DashboardConfig):
+        self._prev_station: Dict[str, str] = {}  # "NET.STA" -> status
+        self._webhook_url = cfg.webhook_url
+        self._webhook_timeout = cfg.webhook_timeout
+        self._hostname = resolve_hostname(cfg.hostname)
+
+    @staticmethod
+    def _aggregate(rows: List[dict]) -> Dict[str, dict]:
+        """Group rows by NET.STA and compute station-level status.
+
+        Returns ``{station_key: {"status": str, "channels": [row, ...]}}``
+        where channels are sorted by LOC.CHA.
+        """
+        stations: Dict[str, list] = {}
+        for r in rows:
+            key = f"{r['network']}.{r['station']}"
+            stations.setdefault(key, []).append(r)
+        result = {}
+        for key, channels in stations.items():
+            channels.sort(key=lambda c: (c.get("location", ""),
+                                         c.get("channel", "")))
+            status = _worst_status(c["status"] for c in channels)
+            result[key] = {"status": status, "channels": channels}
+        return result
+
+    def update(self, rows: List[dict]) -> None:
+        """Compare station-level status against previous poll and alert."""
+        current = self._aggregate(rows)
+        for sta_key, info in current.items():
+            status = info["status"]
+            prev = self._prev_station.get(sta_key)
+            self._prev_station[sta_key] = status
+            if prev is None or prev == status:
+                continue
+            self._on_transition(sta_key, prev, status, info["channels"])
+
+    def _on_transition(self, station: str, prev: str, now: str,
+                       channels: List[dict]) -> None:
+        direction = "degraded" if (_STATUS_RANK.get(now, 99)
+                                   < _STATUS_RANK.get(prev, 99)) else "improved"
+        text = f"[{self._hostname}] {station}: {prev} \u2192 {now}"
+        detail_lines = []
+        for c in channels:
+            loc = c.get("location") or "--"
+            cha = c.get("channel", "")
+            lat = _fmt_latency(c.get("latency_s"))
+            detail_lines.append(f"  {loc}.{cha}  {lat} ({c['status']})")
+        full_text = text + "\n" + "\n".join(detail_lines)
+        log.warning(full_text)
+        if self._webhook_url:
+            post_webhook(
+                self._webhook_url, text=full_text, event=direction,
+                hostname=self._hostname, station=station,
+                previous_status=prev, new_status=now,
+                timeout=self._webhook_timeout,
+            )
+
+
+# ---------------------------------------------------------------------------
 # Polling loop
 # ---------------------------------------------------------------------------
 
@@ -349,6 +441,8 @@ def run_dashboard(cfg: DashboardConfig) -> None:
     clear_screen = interactive
     paginate = interactive
 
+    alerter = DashboardAlerter(cfg) if (cfg.alert or cfg.webhook_url) else None
+
     try:
         while True:
             try:
@@ -367,6 +461,8 @@ def run_dashboard(cfg: DashboardConfig) -> None:
                 # a status field to key on. Default is alphabetical NSLC.
                 rows.sort(key=_sort_key_by_status
                           if cfg.sort_by_status else _sort_key)
+                if alerter is not None:
+                    alerter.update(rows)
                 frame = render(rows, cfg, cfg.server,
                                polled_at=now,
                                clear_screen=clear_screen,

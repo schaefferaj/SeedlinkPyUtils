@@ -8,6 +8,7 @@ archiver resilient to short network outages and process restarts.
 
 import logging
 import os
+import signal
 import time
 from typing import Iterable, List, Optional
 
@@ -15,7 +16,8 @@ from obspy import Stream
 from obspy.clients.seedlink.slclient import SLClient
 from obspy.clients.seedlink.slpacket import SLPacket
 
-from .info import expand_stream_wildcards
+from .info import expand_all_wildcards, expand_stream_wildcards
+from .monitor import MonitorConfig, StaleWatcher
 from .sds import ensure_sds_dir, sds_path
 
 
@@ -69,11 +71,13 @@ class SDSArchiver(SLClient):
     """
 
     def __init__(self, archive_root: str, state_file: Optional[str] = None,
-                 state_save_interval: float = 60.0):
+                 state_save_interval: float = 60.0,
+                 watcher: Optional[StaleWatcher] = None):
         super().__init__()
         self.archive_root = archive_root
         self.state_file = state_file
         self.state_save_interval = state_save_interval
+        self.watcher = watcher
         self._last_state_save = time.time()
         self._packet_count = 0
         self._last_heartbeat = time.time()
@@ -120,6 +124,9 @@ class SDSArchiver(SLClient):
         except Exception as e:
             log.error(f"Failed to write {net}.{sta}.{loc}.{cha} to {path}: {e}")
             return False
+
+        if self.watcher is not None:
+            self.watcher.record_packet(f"{net}.{sta}.{loc}.{cha}")
 
         # Periodic state save so we can resume after a restart. We always
         # advance _last_state_save whether the save succeeded or not — a failing
@@ -183,6 +190,7 @@ def run_archiver(
     reconnect_wait: float = 10.0,
     max_reconnects: Optional[int] = None,
     expand_wildcards: bool = False,
+    monitor_config: Optional[MonitorConfig] = None,
 ):
     """Run the SeedLink-to-SDS archiver with automatic reconnection.
 
@@ -210,6 +218,13 @@ def run_archiver(
         explicit station list. SeedLink does not support NET/STA wildcards
         natively, so this is the only way to subscribe to e.g. all stations
         in a network without listing them by hand.
+    monitor_config : MonitorConfig, optional
+        If set, start a :class:`~seedlink_py_utils.monitor.StaleWatcher` that
+        tracks per-NSLC packet arrivals and emits alerts (log + optional
+        webhook) when a channel goes silent for longer than
+        ``stale_timeout``. With ``exit_on_all_stale`` the archiver exits
+        with status 2 when every registered NSLC is stale, intended to pair
+        with a systemd ``Restart=on-failure`` policy.
     """
     os.makedirs(archive_root, exist_ok=True)
     if expand_wildcards:
@@ -224,6 +239,44 @@ def run_archiver(
     if state_file:
         log.info(f"State file:         {state_file}")
 
+    # --- Optional stale-stream watcher ---------------------------------
+    # The monitor needs concrete NSLCs to pre-register. The archiver's
+    # subscription can still use SeedLink-native LOC/CHA wildcards; we only
+    # expand here for the watcher's expected-set. Failure to expand (server
+    # refuses INFO, schema surprise) isn't fatal — the watcher will just
+    # auto-register NSLCs as packets arrive, and channels that never arrive
+    # won't be caught. Log clearly so the operator knows.
+    watcher: Optional[StaleWatcher] = None
+    fatal_stale = {"triggered": False}
+    if monitor_config is not None:
+        try:
+            expected = expand_all_wildcards(server, streams)
+            log.info(f"Monitor: tracking {len(expected)} NSLC(s).")
+        except Exception as e:
+            log.warning(
+                f"Monitor: could not expand NSLCs for pre-registration ({e}); "
+                "channels will be auto-registered on first packet, and "
+                "never-seen channels will not trigger STALE alerts."
+            )
+            expected = []
+
+        def _on_all_stale():
+            fatal_stale["triggered"] = True
+            # SIGINT unblocks SLClient.run() by raising KeyboardInterrupt in
+            # the main thread. The outer loop's handler saves state and, on
+            # seeing fatal_stale, exits with status 2.
+            try:
+                os.kill(os.getpid(), signal.SIGINT)
+            except Exception as e:
+                log.error(f"on_all_stale: could not signal main thread ({e}).")
+
+        watcher = StaleWatcher(
+            monitor_config,
+            expected_nslcs=expected,
+            on_all_stale=_on_all_stale,
+        )
+        watcher.start()
+
     attempt = 0
     while True:
         attempt += 1
@@ -231,6 +284,7 @@ def run_archiver(
             client = SDSArchiver(
                 archive_root=archive_root,
                 state_file=state_file,
+                watcher=watcher,
             )
             client.slconn.set_sl_address(server)
             # ObsPy bug workaround: SeedLinkConnection.save_state/recover_state
@@ -271,14 +325,29 @@ def run_archiver(
             log.info("SLClient.run() returned cleanly.")
             break  # normal end-time exit
         except KeyboardInterrupt:
-            log.info("Interrupted by user. Saving state and exiting.")
+            if fatal_stale["triggered"]:
+                log.error(
+                    "Exiting with status 2: all registered NSLCs went stale "
+                    "(--exit-on-all-stale)."
+                )
+            else:
+                log.info("Interrupted by user. Saving state and exiting.")
             if state_file:
                 client._save_state_once()
+            if watcher is not None:
+                watcher.stop()
+            if fatal_stale["triggered"]:
+                raise SystemExit(2)
             break
         except Exception as e:
             log.error(f"SeedLink connection error: {e}")
             if max_reconnects is not None and attempt >= max_reconnects:
                 log.error(f"Giving up after {attempt} attempts.")
+                if watcher is not None:
+                    watcher.stop()
                 break
             log.info(f"Reconnecting in {reconnect_wait:.0f}s...")
             time.sleep(reconnect_wait)
+
+    if watcher is not None:
+        watcher.stop()

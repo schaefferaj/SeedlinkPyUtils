@@ -85,6 +85,22 @@ def build_parser():
                              "  '*Z'   all verticals regardless of band code\n"
                              "Quote the pattern in shells that glob * / ?.")
 
+    g_alert = p.add_argument_group("Alerting")
+    g_alert.add_argument("--alert", action="store_true",
+                         help="Enable transition alerts: log + optional webhook\n"
+                              "when an NSLC transitions to/from STALE. Implied\n"
+                              "if --webhook is set.")
+    g_alert.add_argument("--webhook",
+                         help="Slack-compatible incoming-webhook URL. Fires on\n"
+                              "STALE transitions and recoveries. LAG <-> OK\n"
+                              "transitions are logged only (not webhoooked).\n"
+                              "See docs/slack-webhook.md for setup.")
+    g_alert.add_argument("--webhook-timeout", type=float, default=10.0,
+                         metavar="SEC",
+                         help="Per-request timeout for the webhook POST.")
+    g_alert.add_argument("--hostname",
+                         help="Label used in alert text (default: host FQDN).")
+
     g_out = p.add_argument_group("Output")
     g_out.add_argument("--sort-by-status", dest="sort_by_status",
                        action="store_true", default=False,
@@ -120,6 +136,10 @@ def main(argv=None):
         once=args.once,
         timeout=args.timeout,
         sort_by_status=args.sort_by_status,
+        alert=args.alert,
+        webhook_url=args.webhook,
+        webhook_timeout=args.webhook_timeout,
+        hostname=args.hostname,
     )
     run_dashboard(cfg)
     return 0

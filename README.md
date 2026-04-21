@@ -67,6 +67,8 @@ built on [ObsPy](https://docs.obspy.org). Provides:
 - Writes raw miniSEED records byte-identically (no round-trip through numpy)
 - Automatic reconnection with configurable backoff
 - Rotating log file (10 MB × 5 backups) with console heartbeat
+- Optional per-NSLC stale-stream watchdog (`--monitor`) with log + Slack-webhook
+  alerts and a `--exit-on-all-stale` hook for systemd-supervised restart
 
 ### Info / discovery (`seedlink-py-info`)
 - `slinktool`-style flags: `-I` server id, `-L` stations, `-Q` streams,
@@ -89,6 +91,9 @@ built on [ObsPy](https://docs.obspy.org). Provides:
   `--once` and redirected output emit the full table.
 - Resilient to transient poll failures — a network blip shows as
   `Poll failed: …` and the loop continues
+- Optional transition alerting (`--alert`): log + Slack-compatible webhook
+  on STALE transitions and recoveries (LAG <-> OK transitions are logged
+  only). See [docs/slack-webhook.md](docs/slack-webhook.md) for webhook setup
 
 ### Probabilistic PSD monitor (`seedlink-py-ppsd`)
 - Live SeedLink stream feeds `obspy.signal.PPSD` directly — response
@@ -277,26 +282,54 @@ expand it as a filename glob.
 One file per NSLC per day, appended as packets arrive. This is the standard SeisComP /
 SLarchive layout and is readable by ObsPy's `SDSClient` and most SEED-aware tools.
 
-**Running as a service.** A minimal systemd unit file for production use:
+**Monitoring (`--monitor`).** The archiver has an optional in-process
+stale-stream watchdog. When enabled, it tracks per-NSLC packet arrivals and
+alerts on state transitions:
 
-```ini
-[Unit]
-Description=SeedLink to SDS archiver
-After=network.target
+- `HEALTHY → STALE` — no packets for `--stale-timeout` seconds (default 300).
+  Fires once per transition, not every tick.
+- `STALE → HEALTHY` — a previously-silent channel is flowing again.
+- `UNKNOWN → HEALTHY` — first packet of an NSLC. Logged at INFO, no webhook
+  (it's a startup event, not an alert).
 
-[Service]
-Type=simple
-User=seismo
-ExecStart=/opt/conda/envs/seedlink-py-utils/bin/seedlink-py-archiver \
-    CN.PGC..HH? CN.NLLB..HH? \
+Alerts always go to the logger. With `--webhook URL` they also POST a JSON
+body to any Slack-compatible incoming webhook (the `text` field renders in
+Slack; extra fields `event`, `nslc`, `age_seconds`, etc. are there for
+consumers that want structured data).
+
+```bash
+# Bare minimum: enable the watchdog with defaults
+seedlink-py-archiver IU.ANMO.00.BH? --archive /data/sds --monitor
+
+# Production: state file, rotating log, Slack alerts, systemd-friendly exit
+seedlink-py-archiver CN.PGC..HH? CN.NLLB..HH? \
     --archive /data/sds \
     --state-file /var/lib/slarchiver/state.txt \
-    --log-file /var/log/slarchiver.log
+    --log-file /var/log/slarchiver.log \
+    --monitor --stale-timeout 300 \
+    --webhook "$SLACK_WEBHOOK_URL" \
+    --exit-on-all-stale
+```
+
+See [docs/slack-webhook.md](docs/slack-webhook.md) for step-by-step Slack
+setup and [docs/systemd.md](docs/systemd.md) for pairing `--exit-on-all-stale`
+with a systemd `Restart=on-failure` unit (the recommended deployment pattern
+for process-level auto-restart).
+
+**Running as a service.** See [docs/systemd.md](docs/systemd.md) for a
+complete systemd unit, sandboxing options, and notes on webhook secret
+handling. The short version:
+
+```ini
+[Service]
+ExecStart=/opt/conda/envs/seedlink-py-utils/bin/seedlink-py-archiver \
+    CN.PGC..HH? --archive /data/sds \
+    --state-file /var/lib/slarchiver/state.txt \
+    --log-file /var/log/slarchiver.log \
+    --monitor --webhook ${SLACK_WEBHOOK_URL}
 Restart=always
 RestartSec=30
-
-[Install]
-WantedBy=multi-user.target
+KillSignal=SIGINT
 ```
 
 Run `seedlink-py-archiver --help` for the full list of options.
@@ -366,6 +399,12 @@ seedlink-py-dashboard --sort-by-status
 
 # Tighter thresholds (strict "should be near real-time")
 seedlink-py-dashboard --ok-threshold 30 --stale-threshold 300
+
+# Slack alerts when streams go STALE or recover (webhook setup: docs/slack-webhook.md)
+seedlink-py-dashboard --alert --webhook "$SLACK_WEBHOOK_URL"
+
+# Alerts on a specific network, no TTY rendering (headless alerting service)
+seedlink-py-dashboard --network CN --alert --webhook "$SLACK_WEBHOOK_URL" --once
 ```
 
 **Status bands (defaults).** `OK` < 60 s, `LAG` 60–600 s, `STALE` > 600 s,
@@ -561,14 +600,20 @@ cfg = ViewerConfig(
 run_viewer(cfg)
 
 # Archiver
-from seedlink_py_utils import run_archiver
+from seedlink_py_utils import MonitorConfig, run_archiver
 from seedlink_py_utils.logging_setup import setup_logger
 
 setup_logger(log_file="/var/log/slarchiver.log")
 run_archiver(
+    server="rtserve.iris.washington.edu:18000",
     streams=["CN.PGC..HH?", "CN.NLLB..HH?"],
     archive_root="/data/sds",
     state_file="/var/lib/slarchiver/state.txt",
+    monitor_config=MonitorConfig(            # optional
+        stale_timeout=300,
+        webhook_url="https://hooks.slack.com/services/...",
+        exit_on_all_stale=True,              # for systemd-supervised deploys
+    ),
 )
 
 # Info / discovery
@@ -717,6 +762,13 @@ field of whichever preset you chose; the detection filter is preset-locked
 | `--reconnect-wait` | `10` | Seconds between reconnect attempts |
 | `--max-reconnects` | unlimited | Cap on reconnect attempts |
 | `--expand-wildcards` | off | Expand `?` / `*` in NET/STA via `INFO=STREAMS` at startup |
+| `--monitor` | off | Enable the per-NSLC stale-stream watchdog |
+| `--stale-timeout` | `300` | Seconds without a packet before an NSLC is classified STALE |
+| `--monitor-interval` | `60` | Seconds between watchdog checks (must be `< --stale-timeout`) |
+| `--webhook` | — | Slack-compatible incoming-webhook URL for alerts |
+| `--webhook-timeout` | `10` | Per-request webhook POST timeout (seconds) |
+| `--exit-on-all-stale` | off | Exit status 2 when every registered NSLC is STALE (pairs with systemd) |
+| `--hostname` | host FQDN | Label used in alert text |
 | `--log-file` | — | Path to rotating log file (10 MB × 5 backups) |
 | `--log-level` | `INFO` | DEBUG / INFO / WARNING / ERROR |
 
@@ -752,6 +804,10 @@ Exactly one of `-I/-L/-Q/-G/-C` is required.
 | `--station`, `-S` | — | Filter by station code (exact match, case-insensitive) |
 | `--channel`, `-c` | — | Filter by channel code; supports `?` / `*` wildcards (e.g. `EHZ`, `HH?`, `*Z`) |
 | `--sort-by-status` | off | Group rows by status: STALE, LAG, UNKNOWN, OK — alphabetical by NSLC within each group |
+| `--alert` | off | Enable transition alerts (log + optional webhook on STALE transitions) |
+| `--webhook` | — | Slack-compatible incoming-webhook URL for STALE / recovery alerts |
+| `--webhook-timeout` | `10` | Per-request webhook POST timeout (seconds) |
+| `--hostname` | host FQDN | Label used in alert text |
 | `--no-color` | off | Disable ANSI colour (auto-disabled when stdout isn't a TTY) |
 
 ## PPSD configuration reference
