@@ -212,7 +212,10 @@ def run_viewer_mc(cfg: ViewerConfig):
         header += f"   [picker: {picker_cfg.preset_name} ({band})]"
     panel_axes[0].set_title(header, fontsize=10, color=theme["fg"])
 
+    _mc_noclock_anchors = {}  # nslc_key -> [last_endtime, monotonic_at_that_time]
+
     def update(_frame):
+        import time as _time
         wall_now = UTCDateTime()
 
         for panel in panels:
@@ -235,7 +238,17 @@ def run_viewer_mc(cfg: ViewerConfig):
                 continue
 
             tr_vel = remove_response_safe(tr_raw, inventory, cfg)
-            now = tr_vel.stats.endtime if cfg.no_clock else wall_now
+            if cfg.no_clock:
+                nslc_key = f"{net}.{sta}.{loc}.{cha}"
+                current_end = tr_vel.stats.endtime
+                mono_now = _time.perf_counter()
+                anchor = _mc_noclock_anchors.get(nslc_key)
+                if anchor is None or abs(current_end - anchor[0]) > 0.01:
+                    _mc_noclock_anchors[nslc_key] = [current_end, mono_now]
+                    anchor = _mc_noclock_anchors[nslc_key]
+                now = current_end + (mono_now - anchor[1])
+            else:
+                now = wall_now
             tr_plot = apply_filter(tr_vel, current_filter["name"])
             data_plot = tr_plot.data.astype(float)
             times = tr_plot.times() + (tr_plot.stats.starttime - now)
