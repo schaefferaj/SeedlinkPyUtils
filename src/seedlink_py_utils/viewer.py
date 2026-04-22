@@ -226,18 +226,28 @@ def run_viewer(cfg: ViewerConfig):
     ax_sp.set_xlim(-cfg.buffer_seconds, 0)
     apply_theme_to_axes(ax_sp, theme)
 
+    _update_count = [0]
+
     def update(_frame):
+        import time as _time
+        _t0 = _time.perf_counter()
+
         tr_raw = tracebuf.latest(cha)
         if tr_raw is None or tr_raw.stats.npts < cfg.nperseg:
             return line, img
+        _t1 = _time.perf_counter()
 
         tr_vel = remove_response_safe(tr_raw, inventory, cfg)
+        _t2 = _time.perf_counter()
+
         now = tr_vel.stats.endtime if cfg.no_clock else UTCDateTime()
         fs = tr_vel.stats.sampling_rate
 
         tr_plot = apply_filter(tr_vel, current_filter["name"])
         data_plot = tr_plot.data.astype(float)
         times = tr_plot.times() + (tr_plot.stats.starttime - now)
+        _t3 = _time.perf_counter()
+
         line.set_data(times, data_plot)
         ax_wf.set_xlim(-cfg.buffer_seconds, 0)
         if data_plot.size:
@@ -305,6 +315,14 @@ def run_viewer(cfg: ViewerConfig):
         img.set_data(Sxx_db)
         img.set_extent((t_plot_arr[0], t_plot_arr[-1], f[0], f[-1]))
         ax_sp.set_ylim(f[0], f[-1])
+        _t4 = _time.perf_counter()
+
+        _update_count[0] += 1
+        if _update_count[0] % 10 == 0:
+            print(f"[tick {_update_count[0]}] "
+                  f"buf={_t1-_t0:.3f}  resp={_t2-_t1:.3f}  "
+                  f"filt={_t3-_t2:.3f}  spec+draw={_t4-_t3:.3f}  "
+                  f"total={_t4-_t0:.3f}  npts={tr_raw.stats.npts}")
 
         return line, img
 
