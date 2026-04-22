@@ -58,7 +58,7 @@ def run_viewer(cfg: ViewerConfig):
               f"{db_clip} instead of the m/s default {cfg.db_clip}. "
               "Pass --db-clip to override.")
 
-    tracebuf = TraceBuffer(cfg.buffer_seconds)
+    tracebuf = TraceBuffer(cfg.buffer_seconds, no_clock=cfg.no_clock)
     start_seedlink_worker(
         cfg.seedlink_server, [cfg.nslc], tracebuf,
         backfill_seconds=cfg.buffer_seconds if cfg.backfill_on_start else 0,

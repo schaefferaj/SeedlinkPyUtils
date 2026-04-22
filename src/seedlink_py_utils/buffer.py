@@ -18,8 +18,9 @@ from obspy.clients.seedlink.slpacket import SLPacket
 class TraceBuffer:
     """Thread-safe rolling buffer of incoming SeedLink packets."""
 
-    def __init__(self, buffer_seconds: int):
+    def __init__(self, buffer_seconds: int, no_clock: bool = False):
         self.buffer_seconds = buffer_seconds
+        self.no_clock = no_clock
         self._stream = Stream()
         self._lock = threading.Lock()
 
@@ -27,7 +28,11 @@ class TraceBuffer:
         with self._lock:
             self._stream += trace
             self._stream.merge(method=1, fill_value=0)
-            cutoff = UTCDateTime() - self.buffer_seconds
+            if self.no_clock:
+                latest_end = max(tr.stats.endtime for tr in self._stream)
+                cutoff = latest_end - self.buffer_seconds
+            else:
+                cutoff = UTCDateTime() - self.buffer_seconds
             self._stream.trim(starttime=cutoff)
             # Drop accumulated provenance so ``stats.processing`` can't
             # grow past ObsPy's 100-entry warning threshold over a long
