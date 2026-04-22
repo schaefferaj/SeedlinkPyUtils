@@ -196,6 +196,13 @@ def build_parser():
                        help="Open fullscreen with no toolbar (press Esc to exit).")
     g_win.add_argument("--dark-mode", "-d", action="store_true",
                        help="Use a dark colour theme.")
+    g_win.add_argument("--no-clock", action="store_true",
+                       help="Ignore absolute timestamps — use the trace's own\n"
+                            "endpoint as 'now'. Useful when the SeedLink source\n"
+                            "(e.g. a local Raspberry Shake) has no NTP and its\n"
+                            "clock is wrong. The x-axis shows relative seconds\n"
+                            "regardless; this flag ensures the data actually\n"
+                            "appears in the plot window.")
 
     return p
 
@@ -249,6 +256,7 @@ def main(argv=None):
         db_clip_set=getattr(args, "db_clip_set", False),
         fullscreen=args.fullscreen,
         dark_mode=args.dark_mode,
+        no_clock=args.no_clock,
         backfill_on_start=args.backfill,
         filter_name=FILTER_CLI_ALIASES[args.filter_alias] if args.filter_alias else None,
         picker_preset=args.picker_preset,

@@ -212,7 +212,7 @@ def run_viewer_mc(cfg: ViewerConfig):
     panel_axes[0].set_title(header, fontsize=10, color=theme["fg"])
 
     def update(_frame):
-        now = UTCDateTime()
+        wall_now = UTCDateTime()
 
         for panel in panels:
             net, sta, loc, cha = panel.nslc
@@ -234,6 +234,7 @@ def run_viewer_mc(cfg: ViewerConfig):
                 continue
 
             tr_vel = remove_response_safe(tr_raw, inventory, cfg)
+            now = tr_vel.stats.endtime if cfg.no_clock else wall_now
             tr_plot = apply_filter(tr_vel, current_filter["name"])
             data_plot = tr_plot.data.astype(float)
             times = tr_plot.times() + (tr_plot.stats.starttime - now)

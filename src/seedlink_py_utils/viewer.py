@@ -231,7 +231,7 @@ def run_viewer(cfg: ViewerConfig):
             return line, img
 
         tr_vel = remove_response_safe(tr_raw, inventory, cfg)
-        now = UTCDateTime()
+        now = tr_vel.stats.endtime if cfg.no_clock else UTCDateTime()
         fs = tr_vel.stats.sampling_rate
 
         tr_plot = apply_filter(tr_vel, current_filter["name"])

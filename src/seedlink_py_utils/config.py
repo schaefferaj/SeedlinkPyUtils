@@ -89,6 +89,7 @@ class ViewerConfig:
 
     fullscreen: bool = False
     dark_mode: bool = False
+    no_clock: bool = False
 
     # On startup, ask the server to replay buffer_seconds of history so the
     # display opens pre-populated. The server's ring buffer typically covers
