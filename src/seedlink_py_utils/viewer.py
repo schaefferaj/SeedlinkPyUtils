@@ -227,6 +227,7 @@ def run_viewer(cfg: ViewerConfig):
     apply_theme_to_axes(ax_sp, theme)
 
     _update_count = [0]
+    _last_tick_wall = [0.0]
 
     def update(_frame):
         import time as _time
@@ -319,10 +320,14 @@ def run_viewer(cfg: ViewerConfig):
 
         _update_count[0] += 1
         if _update_count[0] % 10 == 0:
+            wall_gap = _t0 - _last_tick_wall[0] if _last_tick_wall[0] else 0
             print(f"[tick {_update_count[0]}] "
                   f"buf={_t1-_t0:.3f}  resp={_t2-_t1:.3f}  "
                   f"filt={_t3-_t2:.3f}  spec+draw={_t4-_t3:.3f}  "
-                  f"total={_t4-_t0:.3f}  npts={tr_raw.stats.npts}")
+                  f"total={_t4-_t0:.3f}  npts={tr_raw.stats.npts}  "
+                  f"wall_since_last_print={wall_gap:.3f}  "
+                  f"streams_in_buf={len(tracebuf)}")
+        _last_tick_wall[0] = _t0
 
         return line, img
 
