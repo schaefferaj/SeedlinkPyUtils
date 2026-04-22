@@ -104,6 +104,7 @@ def run_viewer_mc(cfg: ViewerConfig):
     start_seedlink_worker(
         cfg.seedlink_server, streams, tracebuf,
         backfill_seconds=internal_buffer_seconds if cfg.backfill_on_start else 0,
+        no_clock=cfg.no_clock,
     )
 
     if cfg.filter_name is not None and cfg.filter_name not in FILTERS:

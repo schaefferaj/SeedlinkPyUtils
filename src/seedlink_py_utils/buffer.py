@@ -97,8 +97,33 @@ class _ViewerBufferClient(SLClient):
         return False  # keep running
 
 
+def _probe_server_time(server: str, streams) -> UTCDateTime:
+    """Query INFO=STREAMS and return the latest end_time across *streams*.
+
+    Raises on failure so the caller can fall back gracefully.
+    """
+    from .info import parse_streams, query_info
+    xml = query_info(server, level="STREAMS", timeout=10.0)
+    records = parse_streams(xml)
+    best = None
+    for net, sta, loc, cha in streams:
+        for r in records:
+            if (r.get("network", "").upper() == net.upper()
+                    and r.get("station", "").upper() == sta.upper()):
+                try:
+                    et = UTCDateTime(r["end_time"])
+                    if best is None or et > best:
+                        best = et
+                except Exception:
+                    continue
+    if best is None:
+        raise ValueError("no matching streams in INFO response")
+    return best
+
+
 def start_seedlink_worker(server: str, streams, buffer: "TraceBuffer",
-                          backfill_seconds: int = 0):
+                          backfill_seconds: int = 0,
+                          no_clock: bool = False):
     """Start a daemon thread running an ``SLClient`` worker feeding ``buffer``.
 
     Parameters
@@ -116,6 +141,11 @@ def start_seedlink_worker(server: str, streams, buffer: "TraceBuffer",
         opens with recent history already drawn. On reconnect after a
         network blip we skip backfill — we want live data back ASAP, not a
         second copy of the same history.
+    no_clock : bool
+        If True, the server's clock may differ significantly from the local
+        clock. The worker probes ``INFO=STREAMS`` to discover the server's
+        latest timestamp and uses that as the reference for backfill instead
+        of ``UTCDateTime()``. Falls back to no backfill if the probe fails.
     """
     # Accept either a single NSLC tuple (single-channel viewer) or a list of
     # them (multi-channel viewer).
@@ -130,7 +160,17 @@ def start_seedlink_worker(server: str, streams, buffer: "TraceBuffer",
 
     initial_begin_time = None
     if backfill_seconds > 0:
-        initial_begin_time = UTCDateTime() - backfill_seconds
+        if no_clock:
+            try:
+                server_now = _probe_server_time(server, streams)
+                initial_begin_time = server_now - backfill_seconds
+                print(f"--no-clock: server latest packet at {server_now}, "
+                      f"requesting backfill from {initial_begin_time}")
+            except Exception as e:
+                print(f"--no-clock: could not probe server time ({e}); "
+                      "starting without backfill.")
+        else:
+            initial_begin_time = UTCDateTime() - backfill_seconds
 
     def worker():
         begin_time = initial_begin_time
