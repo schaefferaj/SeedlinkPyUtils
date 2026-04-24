@@ -5,8 +5,15 @@ conda, or a terminal before**. By the end you'll have a live waveform window
 open against a Raspberry Shake on your local network (hostname `rs.local`),
 plotting raw counts (no instrument response removal, no internet required).
 
-Works the same way on **Windows 10/11** and **macOS** — where the steps differ
-there are two columns. Everything else is identical.
+Works the same way on **Windows 10/11**, **Windows + WSL**, **macOS**, and
+**Linux (Ubuntu/Debian/Fedora)** — where the steps differ there are separate
+sections. Everything else is identical.
+
+Two installation paths are covered:
+- **Conda** — traditional, widely tested, works everywhere
+- **uv** — newer, much faster, no conda needed
+
+Pick whichever you're more comfortable with. Both produce the same result.
 
 ---
 
@@ -38,11 +45,10 @@ only thing you need to reach.
   ping rs.local
   ```
 
-  You should see replies. Press `Ctrl+C` (Windows/Linux) or `Cmd+C` (Mac)
-  to stop. If `rs.local` doesn't resolve, you'll need your Shake's IP
-  address instead — check your Shake's admin page or your router's
-  connected-devices list, and substitute that IP for `rs.local` in every
-  command below.
+  You should see replies. Press `Ctrl+C` to stop. If `rs.local` doesn't
+  resolve, you'll need your Shake's IP address instead — check your Shake's
+  admin page or your router's connected-devices list, and substitute that IP
+  for `rs.local` in every command below.
 - About 2 GB of free disk space for the Python scientific stack.
 
 ---
@@ -51,21 +57,28 @@ only thing you need to reach.
 
 You'll be typing commands into a terminal (a.k.a. command prompt / shell).
 
-| Windows | macOS |
+| Platform | How to open |
 |---|---|
-| After step 2 below, use **"Anaconda Prompt (Miniconda3)"** from the Start menu. Until then, use **"Windows Terminal"** or **"Command Prompt"**. | Open **Terminal.app** (Applications → Utilities → Terminal, or ⌘-Space and type "terminal"). |
+| **Windows (native conda)** | After step 2, use **"Anaconda Prompt (Miniconda3)"** from the Start menu. |
+| **Windows + WSL** | Open **Windows Terminal** or **Command Prompt**, type `wsl`, press Enter. You're now in Linux. |
+| **macOS** | Open **Terminal.app** (Applications → Utilities → Terminal, or ⌘-Space and type "terminal"). |
+| **Linux** | Open your distribution's terminal (usually `Ctrl+Alt+T` on Ubuntu/Debian). |
 
 Every command block in this guide is something you type (or paste) into that
 terminal and press Enter.
 
 ---
 
-## 2. Install Miniconda
+## 2. Install Python + a package manager
 
-Miniconda is a small installer that gives you Python plus the `conda` package
-manager, which will handle the scientific libraries this tool depends on.
+Pick **one** of the two paths below.
 
-### Windows
+### Path A: Conda
+
+Miniconda gives you Python plus the `conda` package manager, which handles
+the scientific libraries this tool depends on.
+
+#### Windows (native)
 
 1. Go to <https://www.anaconda.com/download/success#miniconda>
 2. Download the **Miniconda3 Windows 64-bit** installer (`.exe`).
@@ -76,7 +89,29 @@ manager, which will handle the scientific libraries this tool depends on.
 4. When the installer finishes, open **Anaconda Prompt (Miniconda3)** from
    the Start menu. All further Windows commands go in this window.
 
-### macOS
+#### Windows + WSL (Ubuntu)
+
+WSL gives you a real Linux environment inside Windows. If you don't have
+WSL yet:
+
+```
+wsl --install
+```
+
+Restart your computer when prompted, then open WSL from the Start menu or
+by typing `wsl` in Windows Terminal. You'll set up a username/password on
+first launch.
+
+Then install Miniconda inside WSL:
+
+```bash
+curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o miniconda.sh
+bash miniconda.sh -b -p ~/miniconda3
+~/miniconda3/bin/conda init bash
+source ~/.bashrc
+```
+
+#### macOS
 
 1. Go to <https://www.anaconda.com/download/success#miniconda>
 2. Download the **Miniconda3 macOS 64-bit pkg** installer that matches your
@@ -89,9 +124,16 @@ manager, which will handle the scientific libraries this tool depends on.
 3. Run the `.pkg` installer and accept the defaults.
 4. Close and reopen **Terminal.app** so it picks up the new `conda` command.
 
-### Verify
+#### Linux (Ubuntu / Debian / Fedora / etc.)
 
-In your terminal (Anaconda Prompt on Windows, Terminal on Mac), run:
+```bash
+curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o miniconda.sh
+bash miniconda.sh -b -p ~/miniconda3
+~/miniconda3/bin/conda init bash
+source ~/.bashrc
+```
+
+#### Verify conda
 
 ```
 conda --version
@@ -102,76 +144,87 @@ the terminal, reopen it, and try again.
 
 ---
 
-## 3. Install Git (Mac only — Windows has a workaround)
+### Path B: uv (faster alternative, no conda needed)
 
-### Windows
+[uv](https://docs.astral.sh/uv/) is a fast Python package manager from the
+makers of `ruff`. It installs dependencies 10–50× faster than conda or pip.
+You still need Python itself — uv handles the rest.
 
-You have two choices:
+#### Install uv
 
-- **Easy**: skip Git entirely. Download the repo as a ZIP:
-  <https://github.com/schaefferaj/SeedlinkPyUtils/archive/refs/heads/main.zip>
-  Extract it to a folder like `C:\Users\<you>\SeedlinkPyUtils`. Skip ahead
-  to step 4.
-- **Proper**: install Git for Windows from <https://git-scm.com/download/win>
-  (accept all defaults), then follow the Git instructions in step 4.
+**All platforms** (Linux, macOS, WSL):
 
-### macOS
-
-Git ships with the Xcode Command Line Tools. In Terminal, run:
-
-```
-git --version
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.bashrc   # or restart your terminal
 ```
 
-If Git isn't installed, macOS will pop up a dialog offering to install the
-Command Line Tools — click **Install** and wait. Re-run `git --version` when
-it's done.
+**Windows (native PowerShell)**:
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+#### Verify uv
+
+```
+uv --version
+```
+
+You should see `uv 0.x.x`. If you also need Python, uv can install it:
+
+```bash
+uv python install 3.12
+```
+
+---
+
+## 3. Install Git (optional)
+
+Git is optional — you can download the code as a ZIP instead (see step 4).
+
+| Platform | How to install |
+|---|---|
+| **Windows (native)** | Download from <https://git-scm.com/download/win>, accept defaults. Or skip Git and use the ZIP download in step 4. |
+| **WSL / Ubuntu / Debian** | `sudo apt update && sudo apt install -y git` |
+| **Fedora / RHEL** | `sudo dnf install -y git` |
+| **macOS** | Run `git --version` — macOS will offer to install Xcode Command Line Tools. Click Install. |
 
 ---
 
 ## 4. Download the code
 
-Pick the matching column. The resulting folder (called `SeedlinkPyUtils`)
-can live anywhere — your home folder is fine.
+### With Git
 
-### With Git (Mac, or Windows if you installed Git)
-
-```
-cd "%USERPROFILE%"         # Windows: go to your user folder
-cd ~                       # Mac: go to your home folder
+```bash
+cd ~
 git clone https://github.com/schaefferaj/SeedlinkPyUtils.git
 cd SeedlinkPyUtils
 ```
 
-(On Windows, use just the `cd "%USERPROFILE%"` line; on Mac, use just the
-`cd ~` line. Then the `git clone` and `cd SeedlinkPyUtils` lines are the
-same on both.)
+### Without Git (ZIP download)
 
-### Without Git (Windows ZIP route)
+1. Go to <https://github.com/schaefferaj/SeedlinkPyUtils/archive/refs/heads/master.zip>
+2. Extract the ZIP somewhere convenient.
+3. In your terminal, navigate into the extracted folder:
+   ```bash
+   cd ~/SeedlinkPyUtils-master    # adjust the path if you put it elsewhere
+   ```
 
-In your Anaconda Prompt, navigate into the folder you extracted the ZIP to:
-
-```
-cd "%USERPROFILE%\SeedlinkPyUtils-main"
-```
-
-(The folder name has `-main` on the end when GitHub gives you a ZIP. If you
-renamed or moved it, adjust the path accordingly.)
-
-You should now be "inside" the repository. Type `dir` (Windows) or `ls`
-(Mac) — you should see files like `README.md`, `environment.yml`, and a
-`src` folder.
+You should see files like `README.md`, `pyproject.toml`, and a `src` folder
+when you run `ls` (Linux/Mac/WSL) or `dir` (Windows).
 
 ---
 
-## 5. Create the conda environment and install the package
+## 5. Create the environment and install the package
 
-This is the step that takes a few minutes (it's downloading ObsPy, NumPy,
-SciPy, Matplotlib, and their dependencies).
+Pick the path matching your choice in step 2.
+
+### Path A: Conda
 
 Run these three commands **one at a time**, waiting for each to finish:
 
-```
+```bash
 conda env create -f environment.yml
 conda activate seedlink-py-utils
 pip install .
@@ -189,7 +242,29 @@ What each one does:
 3. **`pip install .`** — installs this package into the environment. After
    this, the command `seedlink-py-viewer` is available to you.
 
-Verify:
+> **Trouble with `conda env create`?** Some older conda versions fail with
+> `Malformed version string "~"`. Fix: update conda first with
+> `conda update -n base conda`, then retry. Or switch to the uv path below.
+
+### Path B: uv
+
+```bash
+uv venv
+source .venv/bin/activate    # Linux / macOS / WSL
+# .venv\Scripts\activate     # Windows native (PowerShell)
+
+uv pip install .
+```
+
+What each one does:
+
+1. **`uv venv`** — creates a lightweight virtual environment in `.venv/`.
+2. **`source .venv/bin/activate`** — activates it. Your prompt will show
+   `(.venv)` at the front. You'll need to run this again in new terminals.
+3. **`uv pip install .`** — installs the package and all dependencies
+   (ObsPy, NumPy, SciPy, Matplotlib). Typically finishes in under a minute.
+
+### Verify
 
 ```
 seedlink-py-viewer --help
@@ -265,6 +340,12 @@ because filtering happens after the signal is already on screen.
 To close the viewer, just close the window (or press `Ctrl+C` in the
 terminal).
 
+> **WSL note:** GUI windows from WSL require WSLg (built into Windows 11
+> and recent Windows 10 updates). If the window doesn't appear, try
+> installing an X server like [VcXsrv](https://sourceforge.net/projects/vcxsrv/)
+> and setting `export DISPLAY=:0` before running the viewer. Or run
+> natively on Windows using the conda path.
+
 ---
 
 ## Want a fullscreen dark-mode view?
@@ -283,10 +364,15 @@ Press `Esc` to exit fullscreen.
 
 Once everything is installed, the daily routine is much shorter:
 
-1. Open a terminal (Anaconda Prompt on Windows, Terminal on Mac).
+1. Open a terminal.
 2. Activate the environment:
-   ```
+   ```bash
+   # Conda users:
    conda activate seedlink-py-utils
+
+   # uv users:
+   cd ~/SeedlinkPyUtils       # wherever you cloned/extracted it
+   source .venv/bin/activate
    ```
 3. Run the viewer:
    ```
@@ -303,19 +389,32 @@ until you delete it.
 **"conda: command not found" (or the Windows equivalent).**
 Your terminal hasn't picked up Miniconda yet. Close it and open a fresh
 one — on Windows that means the "Anaconda Prompt (Miniconda3)" shortcut
-specifically, not a regular Command Prompt.
+specifically, not a regular Command Prompt. On Linux/WSL, try
+`source ~/.bashrc`.
+
+**"uv: command not found".**
+Close and reopen your terminal, or run `source ~/.bashrc`. The uv
+installer adds itself to your PATH but the current session may not see it.
+
+**`conda env create` fails with "Malformed version string".**
+Your conda is too old. Run `conda update -n base conda` and retry. Or
+switch to the uv path — it avoids conda entirely.
 
 **"seedlink-py-viewer: command not found" after step 5.**
-You probably forgot `conda activate seedlink-py-utils`, or opened a new
-terminal and forgot to activate again. Run the activate command and try
-again. Your prompt should have `(seedlink-py-utils)` at the front when
-you're in the right environment.
+You probably forgot to activate the environment. Run the activate command
+and try again. Your prompt should have `(seedlink-py-utils)` or `(.venv)`
+at the front when you're in the right environment.
 
 **`rs.local` doesn't resolve.**
 mDNS (the thing that makes `.local` names work) isn't always reliable,
 especially on Windows or over VPN. Find your Shake's IP address (router
 admin page, or the Shake's own admin page at `http://rs.local/` if *that*
 works in a browser) and use the IP instead of `rs.local` in every command.
+
+**WSL: "cannot open display" or no window appears.**
+WSL needs WSLg (Windows 11) or an X server (Windows 10) to show GUI
+windows. See the note in step 7. Alternatively, install natively on
+Windows using the conda path.
 
 **The viewer window opens but stays empty.**
 Check that port 18000 is reachable from your computer. In the terminal:
@@ -340,8 +439,9 @@ instead. That's outside the scope of this guide, but the README's
 - Run `seedlink-py-viewer --help` to see all options (dark mode, custom
   buffer length, STA/LTA event picker, filter presets, etc.).
 - `README.md` in this repo has the full usage reference for the viewer
-  and the other three tools (`seedlink-py-mc-viewer`,
-  `seedlink-py-archiver`, `seedlink-py-info`).
+  and the other tools (`seedlink-py-mc-viewer`, `seedlink-py-archiver`,
+  `seedlink-py-info`, `seedlink-py-dashboard`, `seedlink-py-ppsd`,
+  `seedlink-py-ppsd-archive`).
 - The multi-channel viewer is a natural next step if you have a 3D/4D
   Shake:
   ```
