@@ -157,6 +157,31 @@ pip install -e .       # editable install — code changes take effect on next r
 The editable mode is what you want if you're hacking on the package; the regular
 install is the right default for a production machine.
 
+### uv
+
+[uv](https://docs.astral.sh/uv/) is a fast Python package manager that reads
+the same `pyproject.toml` — no extra config files needed.
+
+```bash
+git clone https://github.com/schaefferaj/SeedlinkPyUtils.git
+cd SeedlinkPyUtils
+
+uv venv
+source .venv/bin/activate   # Linux / macOS / WSL
+# .venv\Scripts\activate    # Windows
+
+uv pip install .             # regular install
+# or
+uv pip install -e .          # editable install for development
+```
+
+Or directly from GitHub (no git required):
+
+```bash
+uv venv && source .venv/bin/activate
+uv pip install "seedlink-py-utils @ https://github.com/schaefferaj/SeedlinkPyUtils/archive/refs/heads/master.tar.gz"
+```
+
 ### Plain pip
 
 ```bash
@@ -165,10 +190,16 @@ cd SeedlinkPyUtils
 pip install -e .
 ```
 
-Or directly from GitHub:
+Or directly from GitHub (requires git):
 
 ```bash
 pip install git+https://github.com/schaefferaj/SeedlinkPyUtils.git
+```
+
+Or without git installed:
+
+```bash
+pip install https://github.com/schaefferaj/SeedlinkPyUtils/archive/refs/heads/master.tar.gz
 ```
 
 ## Usage
