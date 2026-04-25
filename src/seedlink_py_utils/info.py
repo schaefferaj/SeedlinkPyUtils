@@ -237,14 +237,18 @@ def parse_connections(xml_str: str) -> List[Dict[str, str]]:
 def filter_records(records: List[Dict[str, str]],
                    network: Optional[str] = None,
                    station: Optional[str] = None) -> List[Dict[str, str]]:
-    """Client-side filter on network and/or station code (exact match, case-insensitive)."""
+    """Client-side filter on network and/or station code (case-insensitive).
+
+    Both *network* and *station* accept a single code or a comma-separated
+    list (e.g. ``"PQ,NY"``). Each element is matched exactly (no wildcards).
+    """
     out = records
     if network:
-        n = network.upper()
-        out = [r for r in out if r.get("network", "").upper() == n]
+        nets = {n.strip().upper() for n in network.split(",")}
+        out = [r for r in out if r.get("network", "").upper() in nets]
     if station:
-        s = station.upper()
-        out = [r for r in out if r.get("station", "").upper() == s]
+        stas = {s.strip().upper() for s in station.split(",")}
+        out = [r for r in out if r.get("station", "").upper() in stas]
     return out
 
 
