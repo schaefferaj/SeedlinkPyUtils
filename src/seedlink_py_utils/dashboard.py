@@ -188,32 +188,91 @@ def _counts(rows: List[dict]) -> Counter:
 # shows *some* data rather than going blank.
 _LAYOUT_OVERHEAD = 8
 _MIN_DATA_ROWS = 3
+_COL_GAP = "   "
+
+
+def _terminal_size(fallback_lines: int = 24, fallback_cols: int = 80):
+    """Return (lines, cols) of the terminal."""
+    try:
+        sz = shutil.get_terminal_size(fallback=(fallback_cols, fallback_lines))
+        return sz.lines, sz.columns
+    except Exception:
+        return fallback_lines, fallback_cols
 
 
 def _terminal_lines(fallback: int = 24) -> int:
-    """Return terminal height in lines with a sensible fallback."""
-    try:
-        return shutil.get_terminal_size(fallback=(80, fallback)).lines
-    except Exception:
-        return fallback
+    return _terminal_size(fallback_lines=fallback)[0]
 
 
-def _paginate(rows: List[dict], term_lines: int):
+def _format_row_plain(r: dict) -> str:
+    """Format one data row without ANSI colour."""
+    loc = r["location"] if r["location"] else "--"
+    return (
+        f"{r['network']:<3} {r['station']:<5} {loc:<3} {r['channel']:<3} "
+        f"{r['end_time']:<24} {_fmt_latency(r['latency_s']):>10}  "
+        f"{r['status']:<7}"
+    )
+
+
+def _format_row(r: dict, color: bool) -> str:
+    """Format one data row, optionally with ANSI colour on the status."""
+    loc = r["location"] if r["location"] else "--"
+    status = r["status"]
+    status_field = f"{status:<7}"
+    if color:
+        status_field = _STATUS_COLOR[status] + status_field + ANSI_RESET
+    return (
+        f"{r['network']:<3} {r['station']:<5} {loc:<3} {r['channel']:<3} "
+        f"{r['end_time']:<24} {_fmt_latency(r['latency_s']):>10}  "
+        f"{status_field}"
+    )
+
+
+def _row_visible_width() -> int:
+    """Visible character width of a data row (no ANSI codes)."""
+    dummy = {
+        "network": "XX", "station": "XXXXX", "location": "00",
+        "channel": "XXX", "end_time": "X" * 24, "latency_s": 0.0,
+        "status": "UNKNOWN",
+    }
+    return len(_format_row_plain(dummy))
+
+
+_ROW_WIDTH = _row_visible_width()
+
+
+def _paginate(rows: List[dict], term_lines: int, term_cols: int):
     """Fit ``rows`` into the available terminal space.
 
-    Returns ``(visible, hidden_count, hidden_by_status)``. When the input
-    already fits, returns the input unchanged with zero hidden. When it
-    doesn't, truncates from the *end* of the list (preserving the
-    caller's sort order) — so with ``--sort-by-status`` the STALE rows
-    at the top are the ones that stay visible, and the first rows to
-    drop off are OK rows at the bottom.
+    Returns ``(visible, hidden_count, hidden_by_status, two_col)``.
+
+    When two-column layout is feasible (terminal wide enough and rows
+    overflow a single column), ``two_col`` is True and ``visible``
+    contains up to ``2 * max_single_col_rows`` items — the caller
+    renders them in two side-by-side columns.
+
+    Truncation preserves the caller's sort order — with
+    ``--sort-by-status`` STALE rows stay visible and OK rows drop first.
     """
     max_rows = max(_MIN_DATA_ROWS, term_lines - _LAYOUT_OVERHEAD)
+
     if len(rows) <= max_rows:
-        return rows, 0, Counter()
+        return rows, 0, Counter(), False
+
+    two_col_width = 2 * _ROW_WIDTH + len(_COL_GAP)
+    can_two_col = term_cols >= two_col_width
+
+    if can_two_col:
+        max_two_col = 2 * max_rows
+        if len(rows) <= max_two_col:
+            return rows, 0, Counter(), True
+        visible = rows[:max_two_col]
+        hidden = rows[max_two_col:]
+        return visible, len(hidden), Counter(r["status"] for r in hidden), True
+
     visible = rows[:max_rows]
     hidden = rows[max_rows:]
-    return visible, len(hidden), Counter(r["status"] for r in hidden)
+    return visible, len(hidden), Counter(r["status"] for r in hidden), False
 
 
 def render(rows: List[dict], cfg: DashboardConfig, server: str,
@@ -228,25 +287,25 @@ def render(rows: List[dict], cfg: DashboardConfig, server: str,
     When ``paginate`` is True, truncate the table to fit the current
     terminal height (via :func:`shutil.get_terminal_size`) and append a
     "... N more rows hidden" notice summarising what was dropped by
-    status bucket. The banner and summary footer always reflect the
-    **full** row set, so the counts stay accurate regardless of
-    truncation.
+    status bucket. If the terminal is wide enough, the table is rendered
+    in two side-by-side columns before falling back to truncation. The
+    banner and summary footer always reflect the **full** row set, so
+    the counts stay accurate regardless of truncation or column layout.
     """
-    # Snapshot the full list so the banner and summary reflect totals
-    # rather than the post-truncation subset.
     all_rows = rows
     hidden_count = 0
     hidden_by_status: Counter = Counter()
+    two_col = False
     if paginate:
-        rows, hidden_count, hidden_by_status = _paginate(
-            rows, _terminal_lines()
+        term_lines, term_cols = _terminal_size()
+        rows, hidden_count, hidden_by_status, two_col = _paginate(
+            rows, term_lines, term_cols
         )
 
     out = []
     if clear_screen:
         out.append(ANSI_CLEAR)
 
-    # Banner — streams count is the total, not the visible subset.
     banner = (
         f"SeedLink Stream Availability — {server}\n"
         f"Polled: {polled_at.strftime('%Y-%m-%dT%H:%M:%SZ')}"
@@ -258,31 +317,40 @@ def render(rows: List[dict], cfg: DashboardConfig, server: str,
     out.append(banner)
     out.append("")
 
-    # Column header
-    col_hdr = (
+    col_hdr_plain = (
         f"{'NET':<3} {'STA':<5} {'LOC':<3} {'CHA':<3} "
         f"{'LAST PACKET':<24} {'LATENCY':>10}  STATUS"
     )
-    if cfg.color:
-        col_hdr = ANSI_BOLD + col_hdr + ANSI_RESET
-    out.append(col_hdr)
-    out.append("-" * 72)
+    divider = "-" * _ROW_WIDTH
 
-    # Rows (possibly truncated)
-    for r in rows:
-        status = r["status"]
-        status_field = f"{status:<7}"
+    if two_col:
+        hdr_line = col_hdr_plain.ljust(_ROW_WIDTH) + _COL_GAP + col_hdr_plain
+        div_line = divider + _COL_GAP + divider
         if cfg.color:
-            status_field = _STATUS_COLOR[status] + status_field + ANSI_RESET
-        loc = r["location"] if r["location"] else "--"
-        line = (
-            f"{r['network']:<3} {r['station']:<5} {loc:<3} {r['channel']:<3} "
-            f"{r['end_time']:<24} {_fmt_latency(r['latency_s']):>10}  "
-            f"{status_field}"
-        )
-        out.append(line)
+            hdr_line = ANSI_BOLD + hdr_line + ANSI_RESET
+        out.append(hdr_line)
+        out.append(div_line)
 
-    # Truncation notice — ordered by most-populous bucket first.
+        mid = (len(rows) + 1) // 2
+        left = rows[:mid]
+        right = rows[mid:]
+        for i in range(mid):
+            l_text = _format_row(left[i], cfg.color)
+            l_pad = _ROW_WIDTH - len(_format_row_plain(left[i]))
+            if i < len(right):
+                r_text = _format_row(right[i], cfg.color)
+                out.append(l_text + " " * l_pad + _COL_GAP + r_text)
+            else:
+                out.append(l_text)
+    else:
+        col_hdr = col_hdr_plain
+        if cfg.color:
+            col_hdr = ANSI_BOLD + col_hdr + ANSI_RESET
+        out.append(col_hdr)
+        out.append(divider)
+        for r in rows:
+            out.append(_format_row(r, cfg.color))
+
     if hidden_count:
         breakdown = ", ".join(
             f"{n} {s}" for s, n in hidden_by_status.most_common()
@@ -292,7 +360,6 @@ def render(rows: List[dict], cfg: DashboardConfig, server: str,
             notice = ANSI_DIM + notice + ANSI_RESET
         out.append(notice)
 
-    # Summary footer — always reflects the full row set.
     counts = _counts(all_rows)
     summary = (
         f"  OK: {counts['OK']}"
