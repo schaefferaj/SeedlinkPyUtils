@@ -188,7 +188,7 @@ def _counts(rows: List[dict]) -> Counter:
 # shows *some* data rather than going blank.
 _LAYOUT_OVERHEAD = 8
 _MIN_DATA_ROWS = 3
-_COL_GAP = "   "
+_COL_GAP = " | "
 
 
 def _terminal_size(fallback_lines: int = 24, fallback_cols: int = 80):
