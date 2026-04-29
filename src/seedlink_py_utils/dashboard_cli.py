@@ -100,6 +100,11 @@ def build_parser():
                          help="Per-request timeout for the webhook POST.")
     g_alert.add_argument("--hostname",
                          help="Label used in alert text (default: host FQDN).")
+    g_alert.add_argument("--alert-settle", type=int, default=0, metavar="N",
+                         help="Number of consecutive polls a station's status\n"
+                              "must hold before an alert fires. Prevents flapping\n"
+                              "during backfill or transient conditions. 0 (default)\n"
+                              "means alert immediately on any transition.")
 
     g_out = p.add_argument_group("Output")
     g_out.add_argument("--sort-by-status", dest="sort_by_status",
@@ -140,6 +145,7 @@ def main(argv=None):
         webhook_url=args.webhook,
         webhook_timeout=args.webhook_timeout,
         hostname=args.hostname,
+        alert_settle=args.alert_settle,
     )
     run_dashboard(cfg)
     return 0

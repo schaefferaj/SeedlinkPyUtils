@@ -71,6 +71,7 @@ class DashboardConfig:
     webhook_url: Optional[str] = None
     webhook_timeout: float = 10.0
     hostname: Optional[str] = None
+    alert_settle: int = 0            # polls a status must hold before alerting
 
 
 # ---------------------------------------------------------------------------
@@ -432,7 +433,10 @@ class DashboardAlerter:
     """
 
     def __init__(self, cfg: DashboardConfig):
-        self._prev_station: Dict[str, str] = {}  # "NET.STA" -> status
+        self._confirmed: Dict[str, str] = {}   # "NET.STA" -> confirmed status
+        self._pending: Dict[str, str] = {}     # "NET.STA" -> candidate status
+        self._pending_count: Dict[str, int] = {}  # "NET.STA" -> consecutive polls
+        self._settle = cfg.alert_settle
         self._webhook_url = cfg.webhook_url
         self._webhook_timeout = cfg.webhook_timeout
         self._hostname = resolve_hostname(cfg.hostname)
@@ -457,15 +461,46 @@ class DashboardAlerter:
         return result
 
     def update(self, rows: List[dict]) -> None:
-        """Compare station-level status against previous poll and alert."""
+        """Compare station-level status against previous poll and alert.
+
+        When ``alert_settle > 0``, a new status must be observed for that
+        many consecutive polls before an alert fires. This prevents flapping
+        during backfill or other transient conditions.
+        """
         current = self._aggregate(rows)
         for sta_key, info in current.items():
             status = info["status"]
-            prev = self._prev_station.get(sta_key)
-            self._prev_station[sta_key] = status
-            if prev is None or prev == status:
+            confirmed = self._confirmed.get(sta_key)
+
+            if confirmed is None:
+                self._confirmed[sta_key] = status
                 continue
-            self._on_transition(sta_key, prev, status, info["channels"])
+
+            if status == confirmed:
+                self._pending.pop(sta_key, None)
+                self._pending_count.pop(sta_key, None)
+                continue
+
+            if self._settle <= 0:
+                self._confirmed[sta_key] = status
+                self._on_transition(sta_key, confirmed, status,
+                                    info["channels"])
+                continue
+
+            if self._pending.get(sta_key) == status:
+                self._pending_count[sta_key] = (
+                    self._pending_count.get(sta_key, 0) + 1
+                )
+            else:
+                self._pending[sta_key] = status
+                self._pending_count[sta_key] = 1
+
+            if self._pending_count[sta_key] >= self._settle:
+                self._confirmed[sta_key] = status
+                self._pending.pop(sta_key, None)
+                self._pending_count.pop(sta_key, None)
+                self._on_transition(sta_key, confirmed, status,
+                                    info["channels"])
 
     def _on_transition(self, station: str, prev: str, now: str,
                        channels: List[dict]) -> None:
