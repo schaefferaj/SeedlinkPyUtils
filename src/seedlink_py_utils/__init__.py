@@ -8,7 +8,7 @@ before any pyplot import, and with eager imports the viewer module would
 lock in the auto-selected backend before the archiver CLI could set Agg.
 """
 
-__version__ = "0.9.0"
+__version__ = "0.10.0"
 
 __all__ = [
     "run_viewer",
@@ -18,11 +18,13 @@ __all__ = [
     "run_dashboard",
     "run_ppsd",
     "run_ppsd_archive",
+    "run_web",
     "DashboardConfig",
     "PPSDConfig",
     "PPSDArchiveConfig",
     "ViewerConfig",
     "MonitorConfig",
+    "WebConfig",
     "StaleWatcher",
     "THEMES",
     "FILTERS",
@@ -47,6 +49,8 @@ _LAZY_ATTRS = {
     "ViewerConfig":       ("config",       "ViewerConfig"),
     "MonitorConfig":      ("monitor",      "MonitorConfig"),
     "StaleWatcher":       ("monitor",      "StaleWatcher"),
+    "run_web":            ("web",          "run_web"),
+    "WebConfig":          ("web",          "WebConfig"),
     "THEMES":             ("config",       "THEMES"),
     "FILTERS":            ("config",       "FILTERS"),
     "PICKER_PRESETS":     ("picker",       "PICKER_PRESETS"),

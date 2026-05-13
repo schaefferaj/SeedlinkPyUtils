@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}seedlink-py-web{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header>
+  <h1><a href="{{ url_for('index') }}">SeedlinkPyUtils</a></h1>
+  <nav>
+    {% if dashboard_enabled %}
+      <a href="{{ url_for('dashboard_view') }}"
+         class="{% if request.endpoint == 'dashboard_view' %}active{% endif %}">Dashboard</a>
+    {% endif %}
+    {% if ppsd_enabled %}
+      <a href="{{ url_for('ppsd_index') }}"
+         class="{% if request.endpoint and request.endpoint.startswith('ppsd_') %}active{% endif %}">PPSD Archive</a>
+    {% endif %}
+  </nav>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+{% block scripts %}{% endblock %}
+</body>
+</html>

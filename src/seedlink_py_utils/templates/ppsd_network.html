@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}PPSD: {{ net }}{% endblock %}
+{% block content %}
+<section class="ppsd">
+  <nav class="breadcrumb">
+    <a href="{{ url_for('ppsd_index') }}">PPSD</a>
+    <span>›</span>
+    <strong>{{ net }}</strong>
+  </nav>
+
+  <h2>Stations in network {{ net }}</h2>
+  <ul class="card-list">
+    {% for sta in stations %}
+      <li class="card">
+        <a href="{{ url_for('ppsd_station', net=net, sta=sta) }}">
+          <strong>{{ net }}.{{ sta }}</strong>
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

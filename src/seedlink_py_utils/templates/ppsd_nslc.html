@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}PPSD: {{ net }}.{{ sta }}.{{ loc }}.{{ cha }}{% endblock %}
+{% block content %}
+<section class="ppsd">
+  <nav class="breadcrumb">
+    <a href="{{ url_for('ppsd_index') }}">PPSD</a>
+    <span>›</span>
+    <a href="{{ url_for('ppsd_network', net=net) }}">{{ net }}</a>
+    <span>›</span>
+    <a href="{{ url_for('ppsd_station', net=net, sta=sta) }}">{{ sta }}</a>
+    <span>›</span>
+    <strong>{{ loc or '--' }}.{{ cha }}</strong>
+  </nav>
+
+  <h2>{{ net }}.{{ sta }}.{{ loc or '--' }}.{{ cha }}</h2>
+  <p class="meta">Images refresh automatically when the ppsd-archive
+    daemon writes new PNGs (every 30 s by default).</p>
+
+  {% for section in sections %}
+    <details {% if loop.first %}open{% endif %} class="period-section">
+      <summary><h3>{{ section.period|capitalize }}</h3></summary>
+      <ul class="bucket-grid">
+        {% for b in section.buckets %}
+          <li>
+            <figure>
+              <img src="{{ url_for('ppsd_file', relpath=b.relpath) }}?cb={{ b.mtime }}"
+                   data-relpath="{{ b.relpath }}"
+                   data-mtime="{{ b.mtime }}"
+                   class="ppsd-image"
+                   alt="{{ b.name }}" loading="lazy">
+              <figcaption>{{ b.name }}</figcaption>
+            </figure>
+          </li>
+        {% endfor %}
+      </ul>
+    </details>
+  {% endfor %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const MTIME_POLL_MS = 30000;
+
+async function checkOneImage(img) {
+  const relpath = img.dataset.relpath;
+  const oldMtime = parseInt(img.dataset.mtime, 10);
+  try {
+    const resp = await fetch(`/ppsd/file/${relpath}/mtime`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (data.mtime && data.mtime !== oldMtime) {
+      img.dataset.mtime = String(data.mtime);
+      const base = img.src.split('?')[0];
+      img.src = base + '?cb=' + data.mtime;
+    }
+  } catch (e) {
+    // Silent — network blip, next tick will retry.
+  }
+}
+
+async function checkAllImages() {
+  const imgs = document.querySelectorAll('.ppsd-image');
+  await Promise.all(Array.from(imgs).map(checkOneImage));
+}
+
+setInterval(checkAllImages, MTIME_POLL_MS);
+</script>
+{% endblock %}

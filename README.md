@@ -24,6 +24,11 @@ built on [ObsPy](https://docs.obspy.org). Provides:
   (daily / weekly / monthly / quarterly / yearly, any combination).
   Multi-channel, wildcard-expanding, survives restarts, suitable as a
   long-running service
+- **`seedlink-py-web`** — local Flask web UI with two tabs: a live
+  dashboard (browser equivalent of `seedlink-py-dashboard`) and a
+  PPSD archive browser that drills into the directory tree written
+  by `seedlink-py-ppsd-archive` with auto-refresh on image changes.
+  Optional install (`pip install 'seedlink-py-utils[web]'`)
 
 ## Features
 
@@ -127,6 +132,19 @@ built on [ObsPy](https://docs.obspy.org). Provides:
 - Rotating log file (10 MB × 5 backups) with per-render completeness
   summary for out-of-band fleet monitoring
 - SIGTERM / Ctrl-C triggers a final flush before exit
+
+### Web interface (`seedlink-py-web`)
+- Local Flask web UI with two tabs, either or both optional
+- **Dashboard tab** (`--server`): browser equivalent of
+  `seedlink-py-dashboard`. Background polling thread, JS auto-refresh
+  every 5 s, same OK/LAG/STALE colour-coding
+- **PPSD browser tab** (`--ppsd-root`): drill-down across the
+  ppsd-archive output (networks → stations → channels → buckets)
+  with thumbnails and per-image mtime polling so PNGs auto-refresh
+  when the archiver writes new files
+- Localhost-only by default; `--host 0.0.0.0` opts in to LAN visibility
+- No external JS dependencies (vanilla JS only) — works offline
+- Optional install: `pip install 'seedlink-py-utils[web]'`
 
 ## Installation
 
@@ -615,6 +633,65 @@ final NPZ + PNGs on SIGTERM before systemd escalates to SIGKILL.
 
 Run `seedlink-py-ppsd-archive --help` for the full list of options.
 
+### Web interface
+
+`seedlink-py-web` is a local Flask app that exposes a dashboard tab
+(equivalent to `seedlink-py-dashboard` in a browser) and a PPSD archive
+browser tab (drill-down across the PNGs written by
+`seedlink-py-ppsd-archive`). Either or both tabs can be enabled.
+
+First, install the optional web extra:
+
+```bash
+pip install 'seedlink-py-utils[web]'
+# or, if installing from source:
+pip install -e '.[web]'
+```
+
+Then run it. At least one of `--server` or `--ppsd-root` must be supplied:
+
+```bash
+# Both tabs: live dashboard against IRIS + PPSD archive browser
+seedlink-py-web --server rtserve.iris.washington.edu:18000 \
+    --ppsd-root /data/ppsd
+
+# Dashboard only, focused on a local Shake, faster polling
+seedlink-py-web --server rs.local:18000 --interval 10 --network AM
+
+# PPSD browser only (useful even when the archiver is on a different host)
+seedlink-py-web --ppsd-root /data/ppsd
+
+# LAN-visible (default binds to 127.0.0.1)
+seedlink-py-web --server rs.local:18000 --host 0.0.0.0 --port 8888
+```
+
+Open the printed URL in any browser. Two tabs in the header link to:
+
+- **Dashboard** — same OK/LAG/STALE rows as the CLI dashboard, with
+  per-status colour, a polled-at timestamp, and per-bucket counts.
+  JS auto-refreshes the table every 5 s by hitting `/dashboard/data`
+  (JSON) — no full page reload. The background poll to the SeedLink
+  server respects `--interval` (default 30 s) so multiple browser tabs
+  don't multiply the server load.
+- **PPSD Archive** — drill-down view:
+  - `/ppsd` lists networks present under `--ppsd-root`
+  - `/ppsd/<net>` lists stations
+  - `/ppsd/<net>/<sta>` lists channels with the most recent PNG as a
+    thumbnail
+  - `/ppsd/<net>/<sta>/<loc>/<cha>` shows all bucket PNGs (daily,
+    weekly, monthly, …) for that NSLC. Each image is checked for
+    mtime updates every 30 s; if a new render lands, the image is
+    refetched with a cache-busting query string. Pair with a running
+    `seedlink-py-ppsd-archive` daemon for an always-current view
+    without manual refresh.
+
+`seedlink-py-web` runs Flask's development server. It's intended for
+single-user / localhost / LAN use. For multi-user or internet exposure,
+use a production WSGI server (gunicorn / waitress) and reverse proxy
+the `seedlink_py_utils.web.create_app()` factory; that's outside the
+scope of this README.
+
+Run `seedlink-py-web --help` for the full list of options.
 
 ### As a Python API
 
@@ -682,6 +759,16 @@ run_ppsd_archive(PPSDArchiveConfig(
     output_root="/data/ppsd",
     periods=("daily", "weekly", "monthly"),
     expand_wildcards=True,
+))
+
+# Web interface (requires the [web] extra)
+from seedlink_py_utils import WebConfig, run_web
+
+run_web(WebConfig(
+    host="127.0.0.1",
+    port=8080,
+    server="rtserve.iris.washington.edu:18000",
+    ppsd_root="/data/ppsd",
 ))
 ```
 
@@ -879,6 +966,29 @@ Exactly one of `-I/-L/-Q/-G/-C` is required.
 | `--no-noise-models` | off | Disable Peterson NLNM/NHNM overlay |
 | `--log-file` | — | Rotating log file (10 MB × 5 backups) |
 | `--log-level` | `INFO` | DEBUG / INFO / WARNING / ERROR |
+
+## Web interface configuration reference
+
+| Flag | Default | Description |
+|---|---|---|
+| `--host` | `127.0.0.1` | Network interface to bind. `0.0.0.0` exposes the UI to your LAN |
+| `--port` | `8080` | TCP port to bind |
+| `--server` | — | SeedLink server `host:port`. Required to enable the dashboard tab |
+| `--ppsd-root` | — | Path to the ppsd-archive output directory. Required to enable the PPSD tab |
+| `--interval` | `30` | Server poll interval for the dashboard (seconds) |
+| `--timeout` | `30` | Per-poll socket timeout (seconds) |
+| `--ok-threshold` | `60` | Latency below this is OK |
+| `--stale-threshold` | `600` | Latency above this is STALE; between = LAG |
+| `--network`, `-n` | — | Dashboard filter; comma-separated list OK (`PQ,NY`) |
+| `--station`, `-S` | — | Dashboard station filter; comma-separated list OK |
+| `--channel`, `-c` | — | Dashboard channel filter; supports `?` / `*` wildcards |
+| `--sort-by-status` | off | Group dashboard rows by status (STALE first) |
+| `--debug` | off | Flask debug mode (development only) |
+| `--log-file` | — | Optional rotating log file |
+| `--log-level` | `INFO` | DEBUG / INFO / WARNING / ERROR |
+
+At least one of `--server` or `--ppsd-root` is required. If only one is
+supplied, the corresponding tab is hidden.
 
 ## Notes
 

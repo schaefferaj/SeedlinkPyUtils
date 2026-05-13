@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}PPSD: {{ net }}.{{ sta }}{% endblock %}
+{% block content %}
+<section class="ppsd">
+  <nav class="breadcrumb">
+    <a href="{{ url_for('ppsd_index') }}">PPSD</a>
+    <span>›</span>
+    <a href="{{ url_for('ppsd_network', net=net) }}">{{ net }}</a>
+    <span>›</span>
+    <strong>{{ sta }}</strong>
+  </nav>
+
+  <h2>{{ net }}.{{ sta }} — channels</h2>
+  <p class="meta">Click a channel for the full bucket gallery. Thumbnails
+    show the most recent PNG (daily &gt; weekly &gt; monthly).</p>
+
+  <ul class="thumb-list">
+    {% for e in entries %}
+      <li>
+        <a href="{{ url_for('ppsd_nslc', net=net, sta=sta,
+                            loc=e.loc_slug, cha=e.cha) }}">
+          <div class="thumb-frame">
+            {% if e.thumbnail_relpath %}
+              <img src="{{ url_for('ppsd_file', relpath=e.thumbnail_relpath) }}"
+                   alt="{{ net }}.{{ sta }}.{{ e.loc }}.{{ e.cha }}" loading="lazy">
+            {% else %}
+              <div class="no-thumb">(no PNG yet)</div>
+            {% endif %}
+          </div>
+          <div class="thumb-label">
+            <strong>{{ e.loc or '--' }}.{{ e.cha }}</strong>
+          </div>
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

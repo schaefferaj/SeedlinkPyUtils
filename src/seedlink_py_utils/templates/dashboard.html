@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — {{ server }}{% endblock %}
+{% block content %}
+<section class="dashboard">
+  <div class="meta-bar">
+    <div>
+      <strong>Server:</strong> <code>{{ server }}</code>
+      &nbsp;·&nbsp; <strong>Interval:</strong> {{ "%.0f"|format(interval) }} s
+      &nbsp;·&nbsp; <strong>OK &lt;</strong> {{ "%.0f"|format(ok_threshold) }} s
+      &nbsp;·&nbsp; <strong>STALE &gt;</strong> {{ "%.0f"|format(stale_threshold) }} s
+    </div>
+    <div class="polled-at">
+      <span id="polled-at">{{ polled_at or 'waiting for first poll…' }}</span>
+    </div>
+  </div>
+
+  <div id="error-box" class="error-box {% if not error %}hidden{% endif %}">
+    <strong>Poll failed:</strong> <span id="error-text">{{ error or '' }}</span>
+  </div>
+
+  <div class="counts" id="counts-bar">
+    <span class="status-OK"      id="count-OK">OK 0</span>
+    <span class="status-LAG"     id="count-LAG">LAG 0</span>
+    <span class="status-STALE"   id="count-STALE">STALE 0</span>
+    <span class="status-UNKNOWN" id="count-UNKNOWN">UNKNOWN 0</span>
+  </div>
+
+  <table class="streams">
+    <thead>
+      <tr>
+        <th>NET</th><th>STA</th><th>LOC</th><th>CHA</th>
+        <th>Last Packet (UTC)</th>
+        <th class="right">Latency</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody id="streams-tbody">
+      {% if rows %}
+        {% for r in rows %}
+          {% include "_dashboard_row.html" %}
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="7" class="empty">Waiting for first poll…</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const REFRESH_MS = 5000;
+
+function fmtLatency(s) {
+  if (s === null || s === undefined) return "—";
+  const abs = Math.abs(s);
+  if (abs < 60) return abs.toFixed(1) + "s";
+  if (abs < 3600) return (abs / 60).toFixed(1) + "m";
+  if (abs < 86400) return (abs / 3600).toFixed(1) + "h";
+  return (abs / 86400).toFixed(1) + "d";
+}
+
+function escapeHtml(s) {
+  return (s || "").replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  })[c]);
+}
+
+function renderRow(r) {
+  const loc = r.location || "--";
+  return `<tr class="row-${r.status}">
+    <td>${escapeHtml(r.network)}</td>
+    <td>${escapeHtml(r.station)}</td>
+    <td>${escapeHtml(loc)}</td>
+    <td>${escapeHtml(r.channel)}</td>
+    <td>${escapeHtml(r.end_time)}</td>
+    <td class="right">${fmtLatency(r.latency_s)}</td>
+    <td><span class="badge status-${r.status}">${r.status}</span></td>
+  </tr>`;
+}
+
+async function refresh() {
+  try {
+    const resp = await fetch('/dashboard/data');
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+
+    const tbody = document.getElementById('streams-tbody');
+    if (data.rows && data.rows.length) {
+      tbody.innerHTML = data.rows.map(renderRow).join('');
+    } else {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty">No streams.</td></tr>';
+    }
+
+    document.getElementById('polled-at').textContent =
+      data.polled_at || 'waiting…';
+
+    const errBox = document.getElementById('error-box');
+    if (data.error) {
+      errBox.classList.remove('hidden');
+      document.getElementById('error-text').textContent = data.error;
+    } else {
+      errBox.classList.add('hidden');
+    }
+
+    for (const k of ['OK', 'LAG', 'STALE', 'UNKNOWN']) {
+      document.getElementById('count-' + k).textContent =
+        k + ' ' + (data.counts[k] || 0);
+    }
+  } catch (e) {
+    // Network blip — leave previous render in place.
+    console.warn('refresh failed:', e);
+  }
+}
+
+setInterval(refresh, REFRESH_MS);
+// Kick once on load so we don't wait the full interval after the SSR.
+refresh();
+</script>
+{% endblock %}

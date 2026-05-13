@@ -1,0 +1,9 @@
+<tr class="row-{{ r.status }}">
+  <td>{{ r.network }}</td>
+  <td>{{ r.station }}</td>
+  <td>{{ r.location or "--" }}</td>
+  <td>{{ r.channel }}</td>
+  <td>{{ r.end_time }}</td>
+  <td class="right">{{ "%.1fs"|format(r.latency_s) if r.latency_s is not none else "—" }}</td>
+  <td><span class="badge status-{{ r.status }}">{{ r.status }}</span></td>
+</tr>

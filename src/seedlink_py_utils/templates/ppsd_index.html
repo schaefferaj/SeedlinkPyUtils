@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}PPSD Archive{% endblock %}
+{% block content %}
+<section class="ppsd">
+  <h2>PPSD Archive</h2>
+  <p class="meta"><strong>Root:</strong> <code>{{ ppsd_root }}</code></p>
+
+  {% if networks %}
+    <h3>Networks</h3>
+    <ul class="card-list">
+      {% for net in networks %}
+        <li class="card">
+          <a href="{{ url_for('ppsd_network', net=net) }}">
+            <strong>{{ net }}</strong>
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="empty">No networks found in this PPSD archive. The
+      ppsd-archive daemon may not have written any data yet, or the
+      <code>--ppsd-root</code> path is wrong.</p>
+  {% endif %}
+</section>
+{% endblock %}
