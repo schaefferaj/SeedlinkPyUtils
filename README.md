@@ -63,7 +63,12 @@ built on [ObsPy](https://docs.obspy.org). Provides:
 - No spectrogram — the focus is cross-panel correlation, not spectral
   context; use the single-channel viewer when you want a spectrogram
 - `--max-panels` caps the total number of panels (default 8)
-- Shares the viewer's six colour palettes
+- Each panel labels itself with a station tab drawn over the trace, so the
+  left margin carries only tick values — written in full, with no exponent
+  or shared offset. With an inventory the trace is displayed in µm/s rather
+  than m/s so those values stay human-sized (display only; the picker is
+  unaffected)
+- Shares the viewer's six colour palettes, which also tint the station tabs
 
 ### Archiver (`seedlink-py-archiver`)
 - Robust `SLClient`-based connection with state file for resume-on-restart — no data
@@ -922,11 +927,13 @@ compose, so `--palette warm --dark-mode` is amber-on-ember while
 | `contrast` | pure black on white | pure white on black | projectors, poor laptop panels, colour-vision deficiency |
 | `print` | dark grey on white | light grey on near-black | greyscale for report and PDF figures |
 
-Each palette defines eight values — `bg`, `fg`, `trace`, `grid`, `grid_alpha`,
-`accent`, `pick`, and `thresh_off`. Note that `pick` (the STA/LTA trigger
-marker) is chosen to contrast with the **trace**, not just the background,
-since picks are drawn on top of the waveform: the warm palettes therefore use a
-cool pick marker, and every other palette a warm one.
+Each palette defines ten values — `bg`, `fg`, `trace`, `grid`, `grid_alpha`,
+`accent`, `pick`, `thresh_off`, `label_bg`, and `label_fg`. Note that `pick`
+(the STA/LTA trigger marker) is chosen to contrast with the **trace**, not just
+the background, since picks are drawn on top of the waveform: the warm palettes
+therefore use a cool pick marker, and every other palette a warm one.
+`label_bg`/`label_fg` colour the mc-viewer's per-panel station tab, tinted to
+sit on each palette's own ground.
 
 Available on `seedlink-py-viewer`, `seedlink-py-mc-viewer`, `seedlink-py-ppsd`
 and `seedlink-py-ppsd-archive`. The archiver always renders the light variant

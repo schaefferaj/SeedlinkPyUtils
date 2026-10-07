@@ -20,6 +20,13 @@ from typing import List, Optional, Tuple
 #   accent      CFT line, active radio button, PPSD coverage strip
 #   pick        STA/LTA trigger markers + the trigger-on threshold line
 #   thresh_off  the trigger-off threshold line in the CFT strip
+#   label_bg    ground of the NSLC tab drawn over each mc-viewer panel
+#   label_fg    text colour of that tab
+#
+# `label_bg`/`label_fg` are a pair: the tab sits *on* the panel ground, so
+# label_bg should read as a tint of that ground rather than a fourth
+# colour, and label_fg must clear it comfortably. `contrast` inverts the
+# ground outright, which is the point of that palette.
 #
 # `pick` and `thresh_off` must contrast with `trace`, not merely with `bg`:
 # picks are drawn *on top of* the waveform. That's why the warm palettes
@@ -40,6 +47,8 @@ PALETTES = {
             "accent":     "C0",
             "pick":       "#e53935",
             "thresh_off": "#f9a825",
+            "label_bg":   "#d6e8f5",
+            "label_fg":   "#10303f",
         },
         "dark": {
             "bg":         "#1a1a1a",
@@ -50,6 +59,8 @@ PALETTES = {
             "accent":     "#4fc3f7",
             "pick":       "#e53935",
             "thresh_off": "#f9a825",
+            "label_bg":   "#2b3a45",
+            "label_fg":   "#cfe6f5",
         },
     },
     # Sepia ink on aged paper / amber on ember — deliberately close to a
@@ -64,6 +75,8 @@ PALETTES = {
             "accent":     "#c05621",
             "pick":       "#1d6f8a",
             "thresh_off": "#2f8f4e",
+            "label_bg":   "#f0dcc0",
+            "label_fg":   "#3d2a18",
         },
         "dark": {
             "bg":         "#1b1410",
@@ -74,6 +87,8 @@ PALETTES = {
             "accent":     "#ff9d3c",
             "pick":       "#4fb3d9",
             "thresh_off": "#7fd4a0",
+            "label_bg":   "#3a2a1c",
+            "label_fg":   "#f5dfc0",
         },
     },
     # Steel blue on ice / pale blue on navy. The accent carries more
@@ -89,6 +104,8 @@ PALETTES = {
             "accent":     "#0091d5",
             "pick":       "#d1341f",
             "thresh_off": "#e8a33d",
+            "label_bg":   "#d4e6f2",
+            "label_fg":   "#0d2534",
         },
         "dark": {
             "bg":         "#0d1822",
@@ -99,6 +116,8 @@ PALETTES = {
             "accent":     "#56cfe1",
             "pick":       "#ff6b5b",
             "thresh_off": "#ffc857",
+            "label_bg":   "#1b3346",
+            "label_fg":   "#cfe8f8",
         },
     },
     # A green middle ground for people who find warm too yellow and cold
@@ -114,6 +133,8 @@ PALETTES = {
             "accent":     "#2f8f4e",
             "pick":       "#c0392b",
             "thresh_off": "#d98324",
+            "label_bg":   "#d7e8d8",
+            "label_fg":   "#1b2e1f",
         },
         "dark": {
             "bg":         "#101811",
@@ -124,6 +145,8 @@ PALETTES = {
             "accent":     "#5fd37f",
             "pick":       "#ff6b5b",
             "thresh_off": "#ffc857",
+            "label_bg":   "#1e3324",
+            "label_fg":   "#d8ecd9",
         },
     },
     # Maximum separation for a projector in a lit room, a poor laptop
@@ -139,6 +162,8 @@ PALETTES = {
             "accent":     "#0000c8",
             "pick":       "#d40000",
             "thresh_off": "#006e00",
+            "label_bg":   "#000000",
+            "label_fg":   "#ffffff",
         },
         "dark": {
             "bg":         "#000000",
@@ -149,6 +174,8 @@ PALETTES = {
             "accent":     "#ffd600",
             "pick":       "#ff4d4d",
             "thresh_off": "#4dffa6",
+            "label_bg":   "#ffffff",
+            "label_fg":   "#000000",
         },
     },
     # Greyscale for figures that end up in a report or a PDF, where a hue
@@ -166,6 +193,8 @@ PALETTES = {
             "accent":     "#4d4d4d",
             "pick":       "#000000",
             "thresh_off": "#737373",
+            "label_bg":   "#e6e6e6",
+            "label_fg":   "#1a1a1a",
         },
         "dark": {
             "bg":         "#0a0a0a",
@@ -176,6 +205,8 @@ PALETTES = {
             "accent":     "#bdbdbd",
             "pick":       "#ffffff",
             "thresh_off": "#8c8c8c",
+            "label_bg":   "#2e2e2e",
+            "label_fg":   "#f0f0f0",
         },
     },
 }

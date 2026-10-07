@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from dataclasses import dataclass, field
 from matplotlib.animation import FuncAnimation
+from matplotlib.ticker import FuncFormatter, MaxNLocator
 from obspy import UTCDateTime
 from typing import List, Tuple
 
@@ -48,6 +49,30 @@ class _Panel:
     line: object
     picks: List[UTCDateTime] = field(default_factory=list)
     pick_artists: list = field(default_factory=list)
+
+
+def _plain_tick(value, _pos):
+    """Format a y tick without scientific notation or an axis offset.
+
+    Matplotlib's default ScalarFormatter factors a shared offset out of
+    the tick labels (the "+1.65e4" box above the axis) and switches to
+    mantissa/exponent form outside a narrow range. With eight stacked
+    panels that costs a line of chrome per panel and makes neighbouring
+    traces hard to compare at a glance, so every tick here prints its
+    own full value and the precision tapers as the numbers get small.
+    """
+    if value == 0:
+        return "0"
+    mag = abs(value)
+    if mag >= 100:
+        return f"{value:.0f}"
+    if mag >= 10:
+        text = f"{value:.1f}"
+    elif mag >= 1:
+        text = f"{value:.2f}"
+    else:
+        text = f"{value:.3f}"
+    return text.rstrip("0").rstrip(".")
 
 
 def _nslc_label(nslc):
@@ -140,7 +165,7 @@ def run_viewer_mc(cfg: ViewerConfig):
     gs = fig.add_gridspec(
         len(rows), 1, height_ratios=ratios,
         hspace=0.08,
-        left=0.08, right=0.99, top=top, bottom=0.07,
+        left=0.045, right=0.99, top=top, bottom=0.07,
     )
     axes = {name: fig.add_subplot(gs[i, 0]) for i, name in enumerate(rows)}
     panel_axes = [axes[f"p{i}"] for i in range(n_panels)]
@@ -178,12 +203,33 @@ def run_viewer_mc(cfg: ViewerConfig):
         radio.on_clicked(on_filter_change)
 
     # --- Waveform panels --------------------------------------------------
-    units = "m/s" if inventory is not None else "counts"
+    # Response-removed velocity is ~1e-6 m/s, which can only be written
+    # without an exponent by carrying the SI prefix in the unit instead of
+    # the number — so plot micrometres per second. Raw counts are already
+    # human-sized and pass through unscaled. `y_scale` is display-only:
+    # the picker runs on tr_vel, upstream of this.
+    if inventory is not None:
+        y_scale, units = 1e6, "\u00b5m/s"
+    else:
+        y_scale, units = 1.0, "counts"
+
     panels: List[_Panel] = []
     for i, (ax, nslc) in enumerate(zip(panel_axes, streams)):
         (ln,) = ax.plot([], [], lw=0.5, color=theme["trace"])
-        ax.set_ylabel(f"{_nslc_label(nslc)}\n{units}",
-                      fontsize=9, color=theme["fg"])
+        # The NSLC rides on the panel as a tab rather than sitting in the
+        # y-label, which keeps the left margin for numbers and keeps the
+        # station ID next to its own trace when panels are short.
+        ax.text(0.004, 0.085, _nslc_label(nslc), transform=ax.transAxes,
+                fontsize=8, ha="left", va="bottom", zorder=5,
+                color=theme["label_fg"], fontfamily="monospace",
+                bbox=dict(boxstyle="round,pad=0.32", linewidth=0,
+                          facecolor=theme["label_bg"], alpha=0.92))
+        ax.tick_params(axis="y", labelsize=7)
+        ax.yaxis.set_major_formatter(FuncFormatter(_plain_tick))
+        # Four ticks keeps short panels from stacking labels on top of
+        # each other; pruning the ends stops adjacent panels colliding
+        # across the shared boundary.
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=4, prune="both"))
         ax.grid(True, which="both", linestyle="--",
                 alpha=theme["grid_alpha"], color=theme["grid"])
         if i < n_panels - 1:
@@ -202,6 +248,7 @@ def run_viewer_mc(cfg: ViewerConfig):
         header = (f"{_nslc_label(streams[0])} +{n_panels - 1} other"
                   f"{'s' if n_panels - 1 != 1 else ''}"
                   f" — live from {cfg.seedlink_server}")
+    header += f"   [{units}]"
     if locked_filter:
         header += f"   [filter: {locked_filter}]"
     if picker_cfg:
@@ -247,7 +294,7 @@ def run_viewer_mc(cfg: ViewerConfig):
             else:
                 now = wall_now
             tr_plot = apply_filter(tr_vel, current_filter["name"])
-            data_plot = tr_plot.data.astype(float)
+            data_plot = tr_plot.data.astype(float) * y_scale
             times = tr_plot.times() + (tr_plot.stats.starttime - now)
             panel.line.set_data(times, data_plot)
             panel.ax.set_xlim(-cfg.buffer_seconds, 0)
