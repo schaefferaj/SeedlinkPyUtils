@@ -90,6 +90,26 @@ def build_parser():
                        help="Group rows by status (STALE first) instead of\n"
                             "alphabetical NSLC ordering.")
 
+    g_alert = p.add_argument_group("Alerting (dashboard tab only)")
+    g_alert.add_argument("--alert", action="store_true",
+                         help="Enable station-level transition alerts (log +\n"
+                              "optional webhook). Implied if --webhook is set.\n"
+                              "Alerts piggyback on the existing dashboard poll,\n"
+                              "so no extra SeedLink traffic.")
+    g_alert.add_argument("--webhook",
+                         help="Slack-compatible incoming-webhook URL. Fires on\n"
+                              "any station-level status change. See\n"
+                              "docs/slack-webhook.md for setup.")
+    g_alert.add_argument("--webhook-timeout", type=float, default=10.0,
+                         metavar="SEC",
+                         help="Per-request timeout for the webhook POST.")
+    g_alert.add_argument("--hostname",
+                         help="Label used in alert text (default: host FQDN).")
+    g_alert.add_argument("--alert-settle", type=int, default=0, metavar="N",
+                         help="Number of consecutive polls a station's status\n"
+                              "must hold before an alert fires. Damps flapping\n"
+                              "during backfill. 0 (default) = alert immediately.")
+
     g_ppsd = p.add_argument_group("PPSD browser tab (--ppsd-root enables)")
     g_ppsd.add_argument("--ppsd-root",
                        help="Root directory written by seedlink-py-ppsd-archive\n"
@@ -136,12 +156,22 @@ def main(argv=None):
         channel=args.channel,
         sort_by_status=args.sort_by_status,
         ppsd_root=args.ppsd_root,
+        alert=args.alert,
+        webhook_url=args.webhook,
+        webhook_timeout=args.webhook_timeout,
+        hostname=args.hostname,
+        alert_settle=args.alert_settle,
         debug=args.debug,
     )
 
     print(f"seedlink-py-web: serving on http://{cfg.host}:{cfg.port}/")
     if cfg.dashboard_enabled:
         print(f"  dashboard: {cfg.server} (poll every {cfg.interval:.0f}s)")
+        if cfg.alert or cfg.webhook_url:
+            tail = " + webhook" if cfg.webhook_url else ""
+            settle = (f", settle={cfg.alert_settle}"
+                      if cfg.alert_settle > 0 else "")
+            print(f"  alerts: log{tail}{settle}")
     if cfg.ppsd_enabled:
         print(f"  ppsd: {cfg.ppsd_root}")
     print("Press Ctrl-C to stop.")

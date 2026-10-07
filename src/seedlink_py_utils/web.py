@@ -31,6 +31,7 @@ from typing import Dict, List, Optional, Tuple
 from obspy import UTCDateTime
 
 from .dashboard import (
+    DashboardAlerter,
     DashboardConfig,
     _sort_key,
     _sort_key_by_status,
@@ -67,6 +68,15 @@ class WebConfig:
 
     # PPSD tab — disabled when ppsd_root is None.
     ppsd_root: Optional[str] = None
+
+    # Alerting (dashboard tab only). Reuses DashboardAlerter so the
+    # behaviour matches seedlink-py-dashboard --alert exactly. The poll
+    # cycle is shared with the browser — no extra SeedLink traffic.
+    alert: bool = False
+    webhook_url: Optional[str] = None
+    webhook_timeout: float = 10.0
+    hostname: Optional[str] = None
+    alert_settle: int = 0
 
     debug: bool = False
 
@@ -120,6 +130,22 @@ class DashboardPoller:
         self.cfg = cfg
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
+        # Build the DashboardConfig shim once. compute_rows only reads
+        # ok_threshold / stale_threshold; DashboardAlerter reads the
+        # alert-related fields. Reused on every poll.
+        self._dash_cfg = DashboardConfig(
+            ok_threshold=cfg.ok_threshold,
+            stale_threshold=cfg.stale_threshold,
+            alert=cfg.alert,
+            webhook_url=cfg.webhook_url,
+            webhook_timeout=cfg.webhook_timeout,
+            hostname=cfg.hostname,
+            alert_settle=cfg.alert_settle,
+        )
+        self._alerter: Optional[DashboardAlerter] = (
+            DashboardAlerter(self._dash_cfg)
+            if (cfg.alert or cfg.webhook_url) else None
+        )
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -160,15 +186,11 @@ class DashboardPoller:
         if self.cfg.channel:
             records = filter_by_channel(records, self.cfg.channel)
         now = UTCDateTime()
-        # Reuse the dashboard's row computation. We only need the threshold
-        # fields; build a minimal DashboardConfig shim.
-        dash_cfg = DashboardConfig(
-            ok_threshold=self.cfg.ok_threshold,
-            stale_threshold=self.cfg.stale_threshold,
-        )
-        rows = compute_rows(records, now, dash_cfg)
+        rows = compute_rows(records, now, self._dash_cfg)
         rows.sort(key=_sort_key_by_status if self.cfg.sort_by_status
                   else _sort_key)
+        if self._alerter is not None:
+            self._alerter.update(rows)
         self.state.update(rows, now)
 
 

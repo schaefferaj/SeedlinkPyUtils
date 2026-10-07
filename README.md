@@ -175,6 +175,15 @@ pip install -e .       # editable install — code changes take effect on next r
 The editable mode is what you want if you're hacking on the package; the regular
 install is the right default for a production machine.
 
+> **Want the `seedlink-py-web` UI?** Flask is an optional dependency, so
+> the plain install above does NOT pull it in. Use the `[web]` extra
+> instead — it installs everything above plus Flask in one go:
+> ```bash
+> pip install '.[web]'         # or:  pip install -e '.[web]'
+> ```
+> If you've already done a plain install, just add Flask afterwards:
+> `pip install flask`.
+
 ### uv
 
 [uv](https://docs.astral.sh/uv/) is a fast Python package manager that reads
@@ -193,11 +202,19 @@ uv pip install .             # regular install
 uv pip install -e .          # editable install for development
 ```
 
+For the `seedlink-py-web` UI, add the `[web]` extra (pulls in Flask):
+
+```bash
+uv pip install '.[web]'      # or:  uv pip install -e '.[web]'
+```
+
 Or directly from GitHub (no git required):
 
 ```bash
 uv venv && source .venv/bin/activate
 uv pip install "seedlink-py-utils @ https://github.com/schaefferaj/SeedlinkPyUtils/archive/refs/heads/master.tar.gz"
+# For the web UI, append [web]:
+uv pip install "seedlink-py-utils[web] @ https://github.com/schaefferaj/SeedlinkPyUtils/archive/refs/heads/master.tar.gz"
 ```
 
 ### Plain pip
@@ -208,16 +225,26 @@ cd SeedlinkPyUtils
 pip install -e .
 ```
 
+For the `seedlink-py-web` UI, add the `[web]` extra (pulls in Flask):
+
+```bash
+pip install -e '.[web]'      # or:  pip install '.[web]'
+```
+
 Or directly from GitHub (requires git):
 
 ```bash
 pip install git+https://github.com/schaefferaj/SeedlinkPyUtils.git
+# With web UI:
+pip install 'git+https://github.com/schaefferaj/SeedlinkPyUtils.git#egg=seedlink-py-utils[web]'
 ```
 
 Or without git installed:
 
 ```bash
 pip install https://github.com/schaefferaj/SeedlinkPyUtils/archive/refs/heads/master.tar.gz
+# With web UI:
+pip install "seedlink-py-utils[web] @ https://github.com/schaefferaj/SeedlinkPyUtils/archive/refs/heads/master.tar.gz"
 ```
 
 ## Usage
@@ -663,6 +690,12 @@ seedlink-py-web --ppsd-root /data/ppsd
 
 # LAN-visible (default binds to 127.0.0.1)
 seedlink-py-web --server rs.local:18000 --host 0.0.0.0 --port 8888
+
+# Dashboard with Slack alerts on station-level transitions (same flags as
+# seedlink-py-dashboard; piggybacks on the existing poll — no extra traffic)
+seedlink-py-web --server rs.local:18000 \
+    --alert --webhook 'https://hooks.slack.com/services/...' \
+    --alert-settle 2
 ```
 
 Open the printed URL in any browser. Two tabs in the header link to:
@@ -983,6 +1016,11 @@ Exactly one of `-I/-L/-Q/-G/-C` is required.
 | `--station`, `-S` | — | Dashboard station filter; comma-separated list OK |
 | `--channel`, `-c` | — | Dashboard channel filter; supports `?` / `*` wildcards |
 | `--sort-by-status` | off | Group dashboard rows by status (STALE first) |
+| `--alert` | off | Enable station-level transition alerts (log + optional webhook). Same logic as `seedlink-py-dashboard --alert`; shares the existing poll, no extra SeedLink traffic |
+| `--webhook` | — | Slack-compatible incoming-webhook URL. Implies `--alert` |
+| `--webhook-timeout` | `10` | Per-request timeout for the webhook POST (seconds) |
+| `--hostname` | host FQDN | Label used in alert text |
+| `--alert-settle` | `0` | Consecutive polls a status must hold before alerting (debounces flapping during backfill) |
 | `--debug` | off | Flask debug mode (development only) |
 | `--log-file` | — | Optional rotating log file |
 | `--log-level` | `INFO` | DEBUG / INFO / WARNING / ERROR |
