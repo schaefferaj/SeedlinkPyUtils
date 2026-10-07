@@ -4,24 +4,214 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 
-THEMES = {
-    "light": {
-        "bg":         "white",
-        "fg":         "black",
-        "trace":      "0.35",
-        "grid":       "0.7",
-        "grid_alpha": 0.4,
-        "accent":     "C0",
+# Colour palettes for the matplotlib tools (viewer, mc-viewer, PPSD).
+#
+# Two independent axes: a *palette* (hue family) and a *mode* (light or
+# dark). Every palette defines both modes, so `--palette warm --dark-mode`
+# composes. Resolve with `resolve_theme()` rather than indexing directly —
+# it validates the palette name and raises a useful error.
+#
+# Keys, all required in every variant:
+#   bg          figure + axes ground (also tints the Tk window chrome)
+#   fg          spines, ticks, axis labels, panel titles, NSLC captions
+#   trace       the waveform itself — every mc-viewer panel shares it
+#   grid        gridlines, paired with grid_alpha
+#   grid_alpha  gridline alpha
+#   accent      CFT line, active radio button, PPSD coverage strip
+#   pick        STA/LTA trigger markers + the trigger-on threshold line
+#   thresh_off  the trigger-off threshold line in the CFT strip
+#
+# `pick` and `thresh_off` must contrast with `trace`, not merely with `bg`:
+# picks are drawn *on top of* the waveform. That's why the warm palettes
+# flip them cool while everything else keeps them warm — a red pick marker
+# disappears into a sepia or amber trace.
+PALETTES = {
+    # The historical light/dark pair, values unchanged. The matplotlib
+    # shorthand is retained deliberately ("0.35" is the same grey as
+    # "#595959", "C0" the same blue as "#1f77b4") so that rendering stays
+    # bit-for-bit what it was before the palette axis existed.
+    "neutral": {
+        "light": {
+            "bg":         "white",
+            "fg":         "black",
+            "trace":      "0.35",
+            "grid":       "0.7",
+            "grid_alpha": 0.4,
+            "accent":     "C0",
+            "pick":       "#e53935",
+            "thresh_off": "#f9a825",
+        },
+        "dark": {
+            "bg":         "#1a1a1a",
+            "fg":         "#e8e8e8",
+            "trace":      "#cfcfcf",
+            "grid":       "#555555",
+            "grid_alpha": 0.5,
+            "accent":     "#4fc3f7",
+            "pick":       "#e53935",
+            "thresh_off": "#f9a825",
+        },
     },
-    "dark": {
-        "bg":         "#1a1a1a",
-        "fg":         "#e8e8e8",
-        "trace":      "#cfcfcf",
-        "grid":       "#555555",
-        "grid_alpha": 0.5,
-        "accent":     "#4fc3f7",
+    # Sepia ink on aged paper / amber on ember — deliberately close to a
+    # paper drum recorder. Picks go cool for contrast against the trace.
+    "warm": {
+        "light": {
+            "bg":         "#fbf4e9",
+            "fg":         "#33261c",
+            "trace":      "#7a4f28",
+            "grid":       "#dcc8a8",
+            "grid_alpha": 0.45,
+            "accent":     "#c05621",
+            "pick":       "#1d6f8a",
+            "thresh_off": "#2f8f4e",
+        },
+        "dark": {
+            "bg":         "#1b1410",
+            "fg":         "#f2e3d0",
+            "trace":      "#e8b06a",
+            "grid":       "#4a382a",
+            "grid_alpha": 0.5,
+            "accent":     "#ff9d3c",
+            "pick":       "#4fb3d9",
+            "thresh_off": "#7fd4a0",
+        },
+    },
+    # Steel blue on ice / pale blue on navy. The accent carries more
+    # chroma than the trace so the CFT strip doesn't read as another
+    # waveform, and the warm pick marker works here untouched.
+    "cold": {
+        "light": {
+            "bg":         "#f3f7fa",
+            "fg":         "#10212e",
+            "trace":      "#2e5f80",
+            "grid":       "#b9cfdd",
+            "grid_alpha": 0.45,
+            "accent":     "#0091d5",
+            "pick":       "#d1341f",
+            "thresh_off": "#e8a33d",
+        },
+        "dark": {
+            "bg":         "#0d1822",
+            "fg":         "#dbe9f2",
+            "trace":      "#8ecae6",
+            "grid":       "#294559",
+            "grid_alpha": 0.5,
+            "accent":     "#56cfe1",
+            "pick":       "#ff6b5b",
+            "thresh_off": "#ffc857",
+        },
+    },
+    # A green middle ground for people who find warm too yellow and cold
+    # too clinical. Lowest-chroma trace of the set, so it's the most
+    # forgiving for watching a quiet station for an hour.
+    "sage": {
+        "light": {
+            "bg":         "#f2f6f1",
+            "fg":         "#1b2a1e",
+            "trace":      "#3f6245",
+            "grid":       "#c2d4c2",
+            "grid_alpha": 0.45,
+            "accent":     "#2f8f4e",
+            "pick":       "#c0392b",
+            "thresh_off": "#d98324",
+        },
+        "dark": {
+            "bg":         "#101811",
+            "fg":         "#dfeadf",
+            "trace":      "#9ec9a4",
+            "grid":       "#2b4130",
+            "grid_alpha": 0.5,
+            "accent":     "#5fd37f",
+            "pick":       "#ff6b5b",
+            "thresh_off": "#ffc857",
+        },
+    },
+    # Maximum separation for a projector in a lit room, a poor laptop
+    # panel, or colour-vision deficiency. The grid is pushed brighter than
+    # elsewhere because it competes with ambient glare.
+    "contrast": {
+        "light": {
+            "bg":         "#ffffff",
+            "fg":         "#000000",
+            "trace":      "#000000",
+            "grid":       "#7a7a7a",
+            "grid_alpha": 0.5,
+            "accent":     "#0000c8",
+            "pick":       "#d40000",
+            "thresh_off": "#006e00",
+        },
+        "dark": {
+            "bg":         "#000000",
+            "fg":         "#ffffff",
+            "trace":      "#ffffff",
+            "grid":       "#6e6e6e",
+            "grid_alpha": 0.55,
+            "accent":     "#ffd600",
+            "pick":       "#ff4d4d",
+            "thresh_off": "#4dffa6",
+        },
+    },
+    # Greyscale for figures that end up in a report or a PDF, where a hue
+    # survives neither a photocopier nor a reviewer. Faintest grid in the
+    # set, and the pick marker leans on linestyle rather than colour. This
+    # is the palette the PPSD archiver should write — see
+    # ppsd_archive._render_bucket_png, which forces the light variant.
+    "print": {
+        "light": {
+            "bg":         "#ffffff",
+            "fg":         "#1a1a1a",
+            "trace":      "#262626",
+            "grid":       "#a8a8a8",
+            "grid_alpha": 0.35,
+            "accent":     "#4d4d4d",
+            "pick":       "#000000",
+            "thresh_off": "#737373",
+        },
+        "dark": {
+            "bg":         "#0a0a0a",
+            "fg":         "#f5f5f5",
+            "trace":      "#f0f0f0",
+            "grid":       "#5a5a5a",
+            "grid_alpha": 0.45,
+            "accent":     "#bdbdbd",
+            "pick":       "#ffffff",
+            "thresh_off": "#8c8c8c",
+        },
     },
 }
+
+DEFAULT_PALETTE = "neutral"
+
+# Backward-compatible alias. ``THEMES`` predates the palette axis and is
+# exported in ``__init__.__all__``, so ``THEMES["light"]`` /
+# ``THEMES["dark"]`` must keep resolving for external callers.
+THEMES = PALETTES[DEFAULT_PALETTE]
+
+
+def resolve_theme(palette: str = DEFAULT_PALETTE, dark: bool = False) -> dict:
+    """Return one theme dict for ``palette`` in light or dark mode.
+
+    Parameters
+    ----------
+    palette : str
+        Key into :data:`PALETTES` (``"neutral"``, ``"warm"``, ``"cold"``,
+        ``"sage"``, ``"contrast"``, ``"print"``).
+    dark : bool
+        Select the dark variant instead of the light one.
+
+    Raises
+    ------
+    ValueError
+        If ``palette`` is not a known palette name.
+    """
+    try:
+        variants = PALETTES[palette]
+    except KeyError:
+        raise ValueError(
+            f"unknown palette {palette!r}; choose from "
+            f"{', '.join(sorted(PALETTES))}"
+        ) from None
+    return variants["dark" if dark else "light"]
 
 # Presets ordered low-frequency → high-frequency so the radio-button row
 # reads left-to-right from teleseismic long-period to local high-freq.
@@ -88,6 +278,10 @@ class ViewerConfig:
     pre_filt: Tuple[float, float, float, float] = (0.05, 0.1, 45.0, 50.0)
 
     fullscreen: bool = False
+    # Appearance is two axes: `palette` picks the hue family, `dark_mode`
+    # picks the variant within it. Resolve both at once via
+    # config.resolve_theme(cfg.palette, cfg.dark_mode).
+    palette: str = DEFAULT_PALETTE
     dark_mode: bool = False
     no_clock: bool = False
 

@@ -26,6 +26,8 @@ __all__ = [
     "MonitorConfig",
     "WebConfig",
     "StaleWatcher",
+    "PALETTES",
+    "resolve_theme",
     "THEMES",
     "FILTERS",
     "PICKER_PRESETS",
@@ -51,6 +53,10 @@ _LAZY_ATTRS = {
     "StaleWatcher":       ("monitor",      "StaleWatcher"),
     "run_web":            ("web",          "run_web"),
     "WebConfig":          ("web",          "WebConfig"),
+    "PALETTES":           ("config",       "PALETTES"),
+    "resolve_theme":      ("config",       "resolve_theme"),
+    # Backward-compatible alias for PALETTES["neutral"]; predates the
+    # palette axis, kept so THEMES["dark"] still resolves.
     "THEMES":             ("config",       "THEMES"),
     "FILTERS":            ("config",       "FILTERS"),
     "PICKER_PRESETS":     ("picker",       "PICKER_PRESETS"),

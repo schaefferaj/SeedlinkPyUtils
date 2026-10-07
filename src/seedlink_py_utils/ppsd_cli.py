@@ -4,6 +4,7 @@ import argparse
 import sys
 
 from .cli import parse_nslc
+from .config import DEFAULT_PALETTE, PALETTES
 from .ppsd import PPSDConfig, run_ppsd
 
 
@@ -103,7 +104,19 @@ def build_parser():
     g_app.add_argument("--fullscreen", "-f", action="store_true",
                        help="Open fullscreen with no toolbar (press Esc to exit).")
     g_app.add_argument("--dark-mode", "-d", action="store_true",
-                       help="Use a dark colour theme.")
+                       help="Use the dark variant of the chosen --palette.")
+    g_app.add_argument("--palette", default=DEFAULT_PALETTE,
+                       choices=sorted(PALETTES),
+                       help="Colour palette for the figure chrome (ground,\n"
+                            "axes, noise-model overlay, coverage strip).\n"
+                            "Composes with --dark-mode. Independent of\n"
+                            "--cmap, which colours the histogram itself:\n"
+                            "  neutral  - grey on white (default)\n"
+                            "  warm     - sepia on paper / amber on ember\n"
+                            "  cold     - steel blue on ice / pale on navy\n"
+                            "  sage     - low-chroma green\n"
+                            "  contrast - maximum separation for projectors\n"
+                            "  print    - greyscale for report figures")
 
     return p
 
@@ -140,6 +153,7 @@ def main(argv=None):
         show_noise_models=args.show_noise_models,
         cmap=args.cmap,
         fullscreen=args.fullscreen,
+        palette=args.palette,
         dark_mode=args.dark_mode,
     )
     run_ppsd(cfg)

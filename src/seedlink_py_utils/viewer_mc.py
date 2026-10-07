@@ -22,7 +22,7 @@ from obspy import UTCDateTime
 from typing import List, Tuple
 
 from .buffer import TraceBuffer, start_seedlink_worker
-from .config import FILTER_CLI_ALIASES, FILTERS, THEMES, ViewerConfig
+from .config import FILTER_CLI_ALIASES, FILTERS, ViewerConfig, resolve_theme
 from .gui import (
     HRadioButtons,
     apply_theme_to_axes,
@@ -37,9 +37,6 @@ from .picker import (
     resolve_picker_config,
 )
 from .processing import apply_filter, load_inventory_multi, remove_response_safe
-
-
-_PICK_COLOR = "#e53935"
 
 
 @dataclass
@@ -75,7 +72,7 @@ def run_viewer_mc(cfg: ViewerConfig):
               f"({cfg.max_panels}); truncating.")
         streams = streams[:cfg.max_panels]
 
-    theme = THEMES["dark" if cfg.dark_mode else "light"]
+    theme = resolve_theme(cfg.palette, cfg.dark_mode)
 
     # One combined inventory covers response removal for every station.
     inventory = load_inventory_multi(cfg, streams)
@@ -278,7 +275,7 @@ def run_viewer_mc(cfg: ViewerConfig):
                 for p in panel.picks:
                     x = float(p - now)
                     panel.pick_artists.append(
-                        panel.ax.axvline(x, color=_PICK_COLOR,
+                        panel.ax.axvline(x, color=theme["pick"],
                                          lw=1.2, alpha=0.75)
                     )
 

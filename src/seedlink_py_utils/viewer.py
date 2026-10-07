@@ -8,7 +8,7 @@ from obspy import UTCDateTime
 from scipy.signal import spectrogram
 
 from .buffer import TraceBuffer, start_seedlink_worker
-from .config import FILTER_CLI_ALIASES, FILTERS, THEMES, ViewerConfig
+from .config import FILTER_CLI_ALIASES, FILTERS, ViewerConfig, resolve_theme
 from .gui import (
     HRadioButtons,
     apply_theme_to_axes,
@@ -25,13 +25,6 @@ from .picker import (
 from .processing import apply_filter, load_inventory, remove_response_safe
 
 
-# Colour for pick markers and the "trigger on" threshold line — deliberately
-# a saturated red that stands out against both light-theme (white/grey) and
-# dark-theme (near-black/grey) backgrounds.
-_PICK_COLOR = "#e53935"
-_THRESH_OFF_COLOR = "#f9a825"
-
-
 def run_viewer(cfg: ViewerConfig):
     """Launch the real-time SeedLink trace + spectrogram viewer.
 
@@ -41,7 +34,7 @@ def run_viewer(cfg: ViewerConfig):
         Runtime configuration. See :class:`seedlink_py_utils.config.ViewerConfig`.
     """
     net, sta, loc, cha = cfg.nslc
-    theme = THEMES["dark" if cfg.dark_mode else "light"]
+    theme = resolve_theme(cfg.palette, cfg.dark_mode)
 
     inventory = load_inventory(cfg)
 
@@ -165,11 +158,11 @@ def run_viewer(cfg: ViewerConfig):
         ax_cft.set_facecolor(theme["bg"])
         (cft_line,) = ax_cft.plot([], [], lw=0.8, color=theme["accent"])
         thr_on_line = ax_cft.axhline(
-            picker_cfg.thr_on, color=_PICK_COLOR, lw=0.8,
+            picker_cfg.thr_on, color=theme["pick"], lw=0.8,
             linestyle="--", alpha=0.9,
         )
         thr_off_line = ax_cft.axhline(
-            picker_cfg.thr_off, color=_THRESH_OFF_COLOR, lw=0.8,
+            picker_cfg.thr_off, color=theme["thresh_off"], lw=0.8,
             linestyle=":", alpha=0.9,
         )
         ax_cft.set_ylabel("STA/LTA", fontsize=8)
@@ -293,10 +286,10 @@ def run_viewer(cfg: ViewerConfig):
             for p in picks:
                 x = float(p - now)
                 pick_artists.append(
-                    ax_wf.axvline(x, color=_PICK_COLOR, lw=1.2, alpha=0.75)
+                    ax_wf.axvline(x, color=theme["pick"], lw=1.2, alpha=0.75)
                 )
                 pick_artists.append(
-                    ax_cft.axvline(x, color=_PICK_COLOR, lw=1.0, alpha=0.6)
+                    ax_cft.axvline(x, color=theme["pick"], lw=1.0, alpha=0.6)
                 )
 
         # --- Spectrogram (unfiltered response-removed trace) ---

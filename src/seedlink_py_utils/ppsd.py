@@ -40,7 +40,7 @@ from obspy import UTCDateTime
 from obspy.signal.spectral_estimation import PPSD, get_nhnm, get_nlnm
 
 from .buffer import TraceBuffer, start_seedlink_worker
-from .config import THEMES
+from .config import DEFAULT_PALETTE, resolve_theme
 from .gui import apply_theme_to_axes, go_fullscreen, set_tk_window_bg
 from .processing import load_inventory
 
@@ -99,6 +99,9 @@ class PPSDConfig:
     cmap: str = "pqlx"
 
     fullscreen: bool = False
+    # See config.PALETTES — `palette` is the hue family, `dark_mode` the
+    # variant within it.
+    palette: str = DEFAULT_PALETTE
     dark_mode: bool = False
 
 
@@ -327,7 +330,7 @@ def run_ppsd(cfg: PPSDConfig) -> None:
         If no inventory could be loaded.
     """
     net, sta, loc, cha = cfg.nslc
-    theme = THEMES["dark" if cfg.dark_mode else "light"]
+    theme = resolve_theme(cfg.palette, cfg.dark_mode)
 
     # Loading requires a ViewerConfig-shaped object; PPSDConfig duck-types
     # cleanly because ``load_inventory`` only reads ``nslc``,

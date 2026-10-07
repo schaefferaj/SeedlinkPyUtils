@@ -15,6 +15,7 @@ import argparse  # noqa: E402
 import logging  # noqa: E402
 import sys  # noqa: E402
 
+from .config import DEFAULT_PALETTE, PALETTES  # noqa: E402
 from .logging_setup import setup_logger  # noqa: E402
 from .ppsd_archive import PERIODS, PPSDArchiveConfig, run_ppsd_archive  # noqa: E402
 
@@ -138,6 +139,15 @@ def build_parser():
     g_app.add_argument("--no-noise-models", dest="show_noise_models",
                        action="store_false", default=True,
                        help="Disable the Peterson NLNM/NHNM overlay.")
+    g_app.add_argument("--palette", default=DEFAULT_PALETTE,
+                       choices=sorted(PALETTES),
+                       help="Colour palette for the figure chrome (ground,\n"
+                            "axes, noise-model overlay, coverage strip).\n"
+                            "Always the light variant - these PNGs get\n"
+                            "viewed on white, in a browser tab or a report.\n"
+                            "Independent of --cmap, which colours the\n"
+                            "histogram itself. Use 'print' for greyscale\n"
+                            "figures destined for a PDF or a photocopier.")
 
     # ---- Logging ------------------------------------------------------
     g_log = p.add_argument_group("Logging")
@@ -190,6 +200,7 @@ def main(argv=None):
         expand_wildcards=args.expand_wildcards,
         show_noise_models=args.show_noise_models,
         cmap=args.cmap,
+        palette=args.palette,
     )
     try:
         run_ppsd_archive(cfg)

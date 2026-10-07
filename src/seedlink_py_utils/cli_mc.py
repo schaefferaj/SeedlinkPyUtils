@@ -17,7 +17,7 @@ from .cli import (
     parse_nslc,
     parse_pre_filt,
 )
-from .config import FILTER_CLI_ALIASES, ViewerConfig
+from .config import DEFAULT_PALETTE, FILTER_CLI_ALIASES, PALETTES, ViewerConfig
 from .info import expand_all_wildcards
 from .picker import PICKER_PRESETS
 from .viewer_mc import run_viewer_mc
@@ -138,7 +138,18 @@ def build_parser():
     g_win.add_argument("--fullscreen", "-f", action="store_true",
                        help="Open fullscreen with no toolbar (press Esc to exit).")
     g_win.add_argument("--dark-mode", "-d", action="store_true",
-                       help="Use a dark colour theme.")
+                       help="Use the dark variant of the chosen --palette.")
+    g_win.add_argument("--palette", default=DEFAULT_PALETTE,
+                       choices=sorted(PALETTES),
+                       help="Colour palette (hue family). Composes with\n"
+                            "--dark-mode, which selects the light or dark\n"
+                            "variant within the chosen palette:\n"
+                            "  neutral  - grey trace, blue accent (default)\n"
+                            "  warm     - sepia on paper / amber on ember\n"
+                            "  cold     - steel blue on ice / pale on navy\n"
+                            "  sage     - low-chroma green, easy on the eyes\n"
+                            "  contrast - maximum separation for projectors\n"
+                            "  print    - greyscale for report figures")
     g_win.add_argument("--no-clock", action="store_true",
                        help="Ignore absolute timestamps — use the trace's own\n"
                             "endpoint as 'now'. Useful when the SeedLink source\n"
@@ -200,6 +211,7 @@ def main(argv=None):
         water_level=args.water_level,
         pre_filt=pre_filt,
         fullscreen=args.fullscreen,
+        palette=args.palette,
         dark_mode=args.dark_mode,
         no_clock=args.no_clock,
         backfill_on_start=args.backfill,

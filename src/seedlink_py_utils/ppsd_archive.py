@@ -53,7 +53,7 @@ from obspy import UTCDateTime
 from obspy.signal.spectral_estimation import PPSD
 
 from .buffer import TraceBuffer, start_seedlink_worker
-from .config import THEMES
+from .config import DEFAULT_PALETTE, resolve_theme
 from .info import expand_all_wildcards
 from .ppsd import (
     _ALREADY_COVERED_WARNING_PATTERN,
@@ -102,6 +102,12 @@ class PPSDArchiveConfig:
 
     show_noise_models: bool = True
     cmap: str = "pqlx"
+
+    # Hue family for the rendered PNGs; see config.PALETTES. There is no
+    # dark_mode counterpart on purpose — _render_bucket_png always takes
+    # the light variant, because these PNGs are viewed on white (a browser
+    # tab, a report, a printout). "print" is the greyscale option.
+    palette: str = DEFAULT_PALETTE
 
     # Per-NSLC response-load failures are logged and the NSLC is
     # skipped from the subscription list. If *all* NSLCs fail, we
@@ -298,6 +304,7 @@ def _render_bucket_png(
     cmap: str,
     show_noise_models: bool,
     output_path: str,
+    palette: str = DEFAULT_PALETTE,
 ) -> Tuple[int, int]:
     """Render one bucket PPSD to ``output_path``.
 
@@ -322,7 +329,8 @@ def _render_bucket_png(
         getattr(ppsd, "overlap", 0.5),
     )
 
-    theme = THEMES["light"]  # PNG output — light theme is standard
+    # PNG output is always the light variant — these are viewed on white.
+    theme = resolve_theme(palette, dark=False)
     fig = plt.figure(figsize=(10, 7.0), facecolor=theme["bg"])
     gs = fig.add_gridspec(
         2, 1, height_ratios=[1.0, 0.08],
@@ -595,6 +603,7 @@ def run_ppsd_archive(cfg: PPSDArchiveConfig) -> None:
                     got, expected = _render_bucket_png(
                         ppsd, nslc, period, start, end,
                         cfg.cmap, cfg.show_noise_models, png,
+                        cfg.palette,
                     )
                     pct = int(round(100.0 * got / expected)) if expected else 0
                     logger.info(

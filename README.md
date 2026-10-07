@@ -44,7 +44,8 @@ built on [ObsPy](https://docs.obspy.org). Provides:
 - Optional STA/LTA picker with `local` / `regional` / `tele-p` presets —
   adds a CFT strip above the waveform and red vertical markers at trigger
   onsets; STA, LTA, and trigger thresholds individually overridable
-- Light and dark themes
+- Six colour palettes (`neutral` / `warm` / `cold` / `sage` / `contrast` /
+  `print`), each with a light and a dark variant — see *Colour palettes*
 - Cross-platform fullscreen mode (Linux / macOS / Windows / WSL) with a TkAgg-targeted
   fallback for stubborn window managers
 
@@ -62,6 +63,7 @@ built on [ObsPy](https://docs.obspy.org). Provides:
 - No spectrogram — the focus is cross-panel correlation, not spectral
   context; use the single-channel viewer when you want a spectrogram
 - `--max-panels` caps the total number of panels (default 8)
+- Shares the viewer's six colour palettes
 
 ### Archiver (`seedlink-py-archiver`)
 - Robust `SLClient`-based connection with state file for resume-on-restart — no data
@@ -115,7 +117,9 @@ built on [ObsPy](https://docs.obspy.org). Provides:
   non-empty within minutes instead of hours (`--backfill-hours`, default 2)
 - Optional sliding-window cap (`--max-hours`) — older PSDs drop off the
   histogram, useful for "last 24 h" operator views
-- Same dark-mode / fullscreen / Esc-to-exit ergonomics as the viewer
+- Same palette / dark-mode / fullscreen / Esc-to-exit ergonomics as the
+  viewer; `--palette` themes the figure chrome independently of `--cmap`,
+  which colours the histogram itself
 
 ### Headless PPSD archiver (`seedlink-py-ppsd-archive`)
 - Long-running daemon: subscribes to N streams, maintains one master
@@ -129,6 +133,7 @@ built on [ObsPy](https://docs.obspy.org). Provides:
 - Soft-fail per-NSLC: stations whose response can't be loaded are
   logged and skipped; the daemon continues with the rest
 - Per-NSLC folders, per-period subfolders, NSLC.png naming convention
+- `--palette print` renders greyscale PNGs for figures headed to a PDF
 - Rotating log file (10 MB × 5 backups) with per-render completeness
   summary for out-of-band fleet monitoring
 - SIGTERM / Ctrl-C triggers a final flush before exit
@@ -829,7 +834,8 @@ run_web(WebConfig(
 | `--sta` / `--lta` | (preset) | Override STA / LTA window (seconds). Requires `--picker`. |
 | `--trigger-on` / `--trigger-off` | (preset) | Override STA/LTA ratio thresholds. Requires `--picker`. |
 | `--fullscreen`, `-f` | off | Fullscreen, no toolbar |
-| `--dark-mode`, `-d` | off | Dark colour theme |
+| `--palette` | `neutral` | Colour palette: `neutral` / `warm` / `cold` / `sage` / `contrast` / `print` (see *Colour palettes* below) |
+| `--dark-mode`, `-d` | off | Use the dark variant of `--palette` |
 
 ### Filter presets
 
@@ -899,6 +905,48 @@ band than the picker triggers on.
 `--sta`, `--lta`, `--trigger-on`, `--trigger-off` override the corresponding
 field of whichever preset you chose; the detection filter is preset-locked
 (pick the closest preset for your target band).
+
+### Colour palettes
+
+Appearance is two independent axes: `--palette` picks the hue family, and
+`--dark-mode` picks the light or dark variant *within* that palette. The two
+compose, so `--palette warm --dark-mode` is amber-on-ember while
+`--palette warm` alone is sepia-on-paper.
+
+| Palette | Light | Dark | Use case |
+|---|---|---|---|
+| `neutral` *(default)* | grey trace on white | light grey on near-black | the historical theme pair, unchanged |
+| `warm` | sepia on aged paper | amber on ember | long shifts; deliberately close to a paper drum recorder |
+| `cold` | steel blue on ice | pale blue on navy | high-contrast without the glare of pure white |
+| `sage` | muted green on off-white | pale green on near-black | lowest-chroma trace; easiest for watching a quiet station |
+| `contrast` | pure black on white | pure white on black | projectors, poor laptop panels, colour-vision deficiency |
+| `print` | dark grey on white | light grey on near-black | greyscale for report and PDF figures |
+
+Each palette defines eight values — `bg`, `fg`, `trace`, `grid`, `grid_alpha`,
+`accent`, `pick`, and `thresh_off`. Note that `pick` (the STA/LTA trigger
+marker) is chosen to contrast with the **trace**, not just the background,
+since picks are drawn on top of the waveform: the warm palettes therefore use a
+cool pick marker, and every other palette a warm one.
+
+Available on `seedlink-py-viewer`, `seedlink-py-mc-viewer`, `seedlink-py-ppsd`
+and `seedlink-py-ppsd-archive`. The archiver always renders the light variant
+(its PNGs get viewed on white), so it takes `--palette` but has no
+`--dark-mode`.
+
+```bash
+# Sepia-on-paper, with the picker on so the pick colour is visible
+seedlink-py-viewer IU.ANMO.00.BHZ --palette warm --picker tele-p
+
+# Amber-on-ember, fullscreen
+seedlink-py-viewer IU.ANMO.00.BHZ --palette warm --dark-mode --fullscreen
+
+# Blue fleet overview
+seedlink-py-mc-viewer 'CN.*..HHZ' --palette cold --dark-mode
+
+# Greyscale PPSD PNGs for a report
+seedlink-py-ppsd-archive 'CN.*..HHZ' --output-root /data/ppsd \
+    --palette print --expand-wildcards
+```
 
 ## Archiver configuration reference
 
@@ -978,7 +1026,8 @@ Exactly one of `-I/-L/-Q/-G/-C` is required.
 | `--cmap` | `viridis` | Matplotlib colormap for the 2-D histogram |
 | `--no-noise-models` | off | Disable the Peterson NLNM/NHNM overlay |
 | `--fullscreen`, `-f` | off | Fullscreen, no toolbar |
-| `--dark-mode`, `-d` | off | Dark colour theme |
+| `--palette` | `neutral` | Colour palette for the figure chrome; independent of `--cmap` |
+| `--dark-mode`, `-d` | off | Use the dark variant of `--palette` |
 
 ## PPSD archiver configuration reference
 
@@ -996,6 +1045,7 @@ Exactly one of `-I/-L/-Q/-G/-C` is required.
 | `--overlap` | `0.5` | Segment overlap (0–1) |
 | `--expand-wildcards` | off | Expand `?` / `*` in NET/STA via `INFO=STREAMS` at startup |
 | `--cmap` | `pqlx` | Colormap for the 2-D histogram |
+| `--palette` | `neutral` | Colour palette for the figure chrome; always the light variant. `print` for greyscale |
 | `--no-noise-models` | off | Disable Peterson NLNM/NHNM overlay |
 | `--log-file` | — | Rotating log file (10 MB × 5 backups) |
 | `--log-level` | `INFO` | DEBUG / INFO / WARNING / ERROR |
