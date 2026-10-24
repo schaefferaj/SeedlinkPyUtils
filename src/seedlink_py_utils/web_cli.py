@@ -4,7 +4,9 @@
 CLIs. It supports two tabs:
 
 - **Dashboard** (``--server``) — live SeedLink stream-availability table,
-  same data as ``seedlink-py-dashboard`` but in a browser.
+  same data as ``seedlink-py-dashboard`` but in a browser. ``--server``
+  may be repeated (optionally ``LABEL=HOST:PORT``) to watch several
+  servers, giving an "All" sub-tab plus one per server.
 - **PPSD browser** (``--ppsd-root``) — read-only navigation of the PNG
   archive produced by ``seedlink-py-ppsd-archive``.
 
@@ -19,7 +21,7 @@ import logging
 import sys
 
 from .logging_setup import setup_logger
-from .web import WebConfig, run_web
+from .web import WebConfig, parse_server_specs, run_web
 
 
 class _Formatter(argparse.RawDescriptionHelpFormatter,
@@ -48,6 +50,12 @@ def build_parser():
             "  # PPSD browser only\n"
             "  seedlink-py-web --ppsd-root /data/ppsd\n"
             "\n"
+            "  # Several servers: one sub-tab each plus an aggregated 'All' tab.\n"
+            "  # Plain filters apply to every server; LABEL=VALUE scopes one.\n"
+            "  seedlink-py-web --server iris=rtserve.iris.washington.edu:18000 \\\n"
+            "      --server hakai=seiscomp.hakai.org:18000 \\\n"
+            "      --network iris=CN,IU --network hakai=AM,PQ --channel 'HH?,EH?'\n"
+            "\n"
             "  # LAN-visible (default is localhost only)\n"
             "  seedlink-py-web --server rs.local:18000 --host 0.0.0.0 --port 8888\n"
         ),
@@ -64,9 +72,12 @@ def build_parser():
                             "auto-reload on code change). Development only.")
 
     g_dash = p.add_argument_group("Dashboard tab (--server enables)")
-    g_dash.add_argument("--server",
-                       help="SeedLink server host:port. If unset, the\n"
-                            "dashboard tab is disabled.")
+    g_dash.add_argument("--server", action="append", default=[],
+                       metavar="[LABEL=]HOST:PORT",
+                       help="SeedLink server. Repeat to watch several; each\n"
+                            "gets a sub-tab named LABEL (default: first part\n"
+                            "of the hostname) plus an aggregated 'All' tab.\n"
+                            "If unset, the dashboard tab is disabled.")
     g_dash.add_argument("--interval", type=float, default=30.0, metavar="SEC",
                        help="Server poll interval (seconds).")
     g_dash.add_argument("--timeout", type=float, default=30.0, metavar="SEC",
@@ -78,14 +89,23 @@ def build_parser():
                        metavar="SEC",
                        help="Latency above this is STALE (red); between is\n"
                             "LAG (yellow).")
-    g_dash.add_argument("--network", "-n",
+    g_dash.add_argument("--network", "-n", action="append", default=[],
+                       metavar="[LABEL=]NETS",
                        help="Filter by network code. Accepts a single code\n"
-                            "or a comma-separated list (e.g. 'PQ,NY').")
-    g_dash.add_argument("--station", "-S",
-                       help="Filter by station code. Comma-separated list ok.")
-    g_dash.add_argument("--channel", "-c",
+                            "or a comma-separated list (e.g. 'PQ,NY'). A plain\n"
+                            "value applies to every server; LABEL=NETS applies\n"
+                            "to that server only and replaces the plain value\n"
+                            "there. Repeatable.")
+    g_dash.add_argument("--station", "-S", action="append", default=[],
+                       metavar="[LABEL=]STAS",
+                       help="Filter by station code. Comma-separated list ok.\n"
+                            "LABEL= scoping as for --network.")
+    g_dash.add_argument("--channel", "-c", action="append", default=[],
+                       metavar="[LABEL=]CHAS",
                        help="Filter by channel code. Supports ? / * wildcards\n"
-                            "(e.g. 'EHZ', 'HH?', '*Z').")
+                            "(e.g. 'EHZ', 'HH?', '*Z'); comma list matches any\n"
+                            "('HH?,EH?'). LABEL= scoping as for\n"
+                            "--network.")
     g_dash.add_argument("--sort-by-status", action="store_true",
                        help="Group rows by status (STALE first) instead of\n"
                             "alphabetical NSLC ordering.")
@@ -137,6 +157,17 @@ def main(argv=None):
         )
         return 2
 
+    try:
+        servers = parse_server_specs(args.server, args.network,
+                                     args.station, args.channel)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 2
+    if not servers and (args.network or args.station or args.channel):
+        print("Error: --network/--station/--channel need --server.",
+              file=sys.stderr)
+        return 2
+
     setup_logger(
         name="seedlink_py_utils",
         log_file=args.log_file,
@@ -146,14 +177,11 @@ def main(argv=None):
     cfg = WebConfig(
         host=args.host,
         port=args.port,
-        server=args.server,
+        servers=servers,
         interval=args.interval,
         timeout=args.timeout,
         ok_threshold=args.ok_threshold,
         stale_threshold=args.stale_threshold,
-        network=args.network,
-        station=args.station,
-        channel=args.channel,
         sort_by_status=args.sort_by_status,
         ppsd_root=args.ppsd_root,
         alert=args.alert,
@@ -166,7 +194,13 @@ def main(argv=None):
 
     print(f"seedlink-py-web: serving on http://{cfg.host}:{cfg.port}/")
     if cfg.dashboard_enabled:
-        print(f"  dashboard: {cfg.server} (poll every {cfg.interval:.0f}s)")
+        print(f"  dashboard: poll every {cfg.interval:.0f}s")
+        for sp in cfg.servers:
+            filt = ", ".join(f"{k}={v}" for k, v in (
+                ("net", sp.network), ("sta", sp.station), ("cha", sp.channel))
+                if v)
+            print(f"    {sp.label:<10} {sp.address}"
+                  + (f"  [{filt}]" if filt else ""))
         if cfg.alert or cfg.webhook_url:
             tail = " + webhook" if cfg.webhook_url else ""
             settle = (f", settle={cfg.alert_settle}"

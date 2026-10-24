@@ -148,6 +148,9 @@ built on [ObsPy](https://docs.obspy.org). Provides:
 - **Dashboard tab** (`--server`): browser equivalent of
   `seedlink-py-dashboard`. Background polling thread, JS auto-refresh
   every 5 s, same OK/LAG/STALE colour-coding
+- **Several servers at once**: repeat `--server [LABEL=]HOST:PORT` for an
+  aggregated "All" sub-tab plus one sub-tab per server; filters can be
+  global or scoped per server with `LABEL=VALUE`
 - **PPSD browser tab** (`--ppsd-root`): drill-down across the
   ppsd-archive output (networks → stations → channels → buckets)
   with thumbnails and per-image mtime polling so PNGs auto-refresh
@@ -707,6 +710,47 @@ seedlink-py-web --server rs.local:18000 \
     --alert --webhook 'https://hooks.slack.com/services/...' \
     --alert-settle 2
 ```
+
+#### Watching several servers
+
+Repeat `--server` to poll several SeedLink servers from one process. Each
+server gets its own poller thread and its own sub-tab, and an **All**
+sub-tab merges every server's rows with a **Source** column:
+
+```bash
+seedlink-py-web --port 8090 \
+    --server earthscope=rtserve.earthscope.org:18000 \
+    --server hakai=seiscomp.hakai.org:18000 \
+    --server cn=earthquakescanada.nrcan.gc.ca:18000 \
+    --network earthscope=IU,US --network hakai=AM,PQ --network cn=CN \
+    --channel 'HH?,EH?' --channel hakai=EHZ --sort-by-status
+```
+
+- **Labels.** `LABEL=HOST:PORT` names the tab. Without a label the first
+  part of the hostname is used (`seiscomp.hakai.org:18000` → `seiscomp`),
+  falling back to the full address if two servers would collide.
+- **Filters** (`--network`, `--station`, `--channel`) are repeatable. A
+  plain value applies to every server; `LABEL=VALUE` applies to that
+  server only and *replaces* the plain value there. In the example above
+  `hakai` uses `EHZ` while the other two use `HH?,EH?`. Each field is
+  resolved independently, so a scoped `--network` leaves a global
+  `--channel` in force.
+- **Duplicates are kept.** A stream relayed by two servers shows up twice
+  on the All tab, side by side and tagged by source. The latencies can
+  legitimately differ, and that difference is often what you want to see.
+- **Tabs are bookmarkable** via the URL hash (`/dashboard#hakai`). Each
+  tab shows a dot coloured by its worst status, so a problem on a server
+  you aren't viewing is still visible.
+- **One slow or unreachable server doesn't block the others.** Its error
+  shows on its own tab and in the All tab's banner, prefixed by label.
+- **Alerts** (`--alert` / `--webhook`) run one alerter per server, and the
+  text is tagged with the source, e.g. `[host] [hakai] PQ.DAOB: OK → STALE`.
+  The webhook JSON gains a `source` field. Single-server alerts are
+  unchanged.
+
+`/dashboard/data` keeps its single-server shape (`rows`, `counts`,
+`polled_at`, `error`) as the aggregate, adds `source` to every row, and
+adds a `sources` list with per-server counts, errors and poll times.
 
 Open the printed URL in any browser. Two tabs in the header link to:
 

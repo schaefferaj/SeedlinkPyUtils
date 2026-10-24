@@ -283,3 +283,48 @@ tr.row-UNKNOWN td:first-child { border-left: 3px solid var(--unknown); }
   font-size: 0.85rem;
   border-top: 1px solid var(--border);
 }
+
+/* ---- dashboard sub-tabs (multi-server) ---- */
+
+.subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+.subtabs a {
+  color: var(--fg-dim);
+  padding: 0.4rem 0.9rem;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  margin-bottom: -1px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.subtabs a:hover { text-decoration: none; color: var(--fg); }
+.subtabs a.active {
+  color: var(--fg);
+  background: var(--panel);
+  border-color: var(--border);
+}
+.subtabs .tab-n {
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+  color: var(--fg-dim);
+}
+.dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--border);
+  display: inline-block;
+}
+.dot.bg-OK      { background: var(--ok); }
+.dot.bg-LAG     { background: var(--lag); }
+.dot.bg-STALE   { background: var(--stale); }
+.dot.bg-UNKNOWN { background: var(--unknown); }
+
+table.streams td.col-source { color: var(--accent); }

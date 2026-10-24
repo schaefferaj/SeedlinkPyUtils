@@ -83,6 +83,7 @@ def build_parser():
                              "  EHZ    one row per station for Shake verticals\n"
                              "  HH?    all HH-band channels\n"
                              "  '*Z'   all verticals regardless of band code\n"
+                             "  'HH?,EH?'  comma list matches any pattern\n"
                              "Quote the pattern in shells that glob * / ?.")
 
     g_alert = p.add_argument_group("Alerting")

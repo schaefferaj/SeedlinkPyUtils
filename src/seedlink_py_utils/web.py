@@ -5,7 +5,9 @@ Provides a local web UI with two tabs:
 - ``/dashboard`` — live SeedLink stream availability table, mirroring
   ``seedlink-py-dashboard`` but in a browser. A background thread polls
   ``INFO=STREAMS`` at the configured interval and the page auto-refreshes
-  via JS poll.
+  via JS poll. Several servers can be watched at once (one poller thread
+  each); the page then shows an "All" sub-tab merging every server's rows
+  with a Source column, plus one sub-tab per server.
 - ``/ppsd`` — read-only browser over the PPSD archive directory tree
   produced by ``seedlink-py-ppsd-archive``. Drilldown: networks → stations
   → NSLCs → bucket PNGs. Images auto-refresh on file mtime change so a
@@ -22,11 +24,12 @@ Flask is an optional dependency — install with
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from obspy import UTCDateTime
 
@@ -35,6 +38,7 @@ from .dashboard import (
     DashboardConfig,
     _sort_key,
     _sort_key_by_status,
+    _worst_status,
     compute_rows,
     filter_by_channel,
 )
@@ -49,13 +53,129 @@ _PPSD_PERIODS = ("daily", "weekly", "monthly", "quarterly", "yearly")
 
 
 @dataclass
+class ServerSpec:
+    """One SeedLink server watched by the dashboard tab.
+
+    ``label`` is the short name used for the tab, the "Source" column on
+    the aggregated view, and alert text. The filters are the *effective*
+    ones for this server (global value, or a ``LABEL=`` override).
+    """
+
+    label: str
+    address: str
+    network: Optional[str] = None
+    station: Optional[str] = None
+    channel: Optional[str] = None
+
+
+_LABEL_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def _split_scoped(value: str) -> Tuple[Optional[str], str]:
+    """Split ``"LABEL=VALUE"`` into ``(LABEL, VALUE)``; plain → ``(None, value)``.
+
+    SeedLink addresses, network/station codes and channel globs never
+    contain ``=``, so its presence unambiguously marks a label.
+    """
+    if "=" in value:
+        label, _, rest = value.partition("=")
+        return label.strip(), rest.strip()
+    return None, value.strip()
+
+
+def _default_label(address: str) -> str:
+    host = address.rsplit(":", 1)[0] if ":" in address else address
+    if host.replace(".", "").isdigit():
+        return host  # bare IPv4: keep the whole thing
+    return host.split(".", 1)[0] or address
+
+
+def parse_server_specs(
+    servers: Sequence[str],
+    networks: Sequence[str] = (),
+    stations: Sequence[str] = (),
+    channels: Sequence[str] = (),
+) -> List[ServerSpec]:
+    """Build :class:`ServerSpec` list from repeatable CLI values.
+
+    ``servers`` entries are ``HOST:PORT`` or ``LABEL=HOST:PORT``. Filter
+    entries are ``VALUE`` (applies to every server) or ``LABEL=VALUE``
+    (that server only, replacing the global value for that field).
+
+    Raises ``ValueError`` with a user-facing message on bad input.
+    """
+    specs: List[ServerSpec] = []
+    explicit = set()
+    for raw in servers:
+        label, address = _split_scoped(raw)
+        if not address:
+            raise ValueError(f"--server {raw!r}: missing HOST:PORT")
+        if label is not None:
+            if not _LABEL_RE.match(label):
+                raise ValueError(
+                    f"--server {raw!r}: label must be letters, digits, "
+                    f"'.', '_' or '-'")
+            explicit.add(label)
+        specs.append(ServerSpec(label=label or "", address=address))
+
+    # Default labels: first DNS component, falling back to the full
+    # address when that would collide with another server.
+    for sp in specs:
+        if not sp.label:
+            sp.label = _default_label(sp.address)
+    seen: Dict[str, int] = {}
+    for sp in specs:
+        seen[sp.label] = seen.get(sp.label, 0) + 1
+    for sp in specs:
+        if seen[sp.label] > 1 and sp.label not in explicit:
+            sp.label = sp.address
+    labels = [sp.label for sp in specs]
+    dupes = sorted({lb for lb in labels if labels.count(lb) > 1})
+    if dupes:
+        raise ValueError(
+            f"duplicate server label(s): {', '.join(dupes)}. "
+            f"Give each --server a unique LABEL=HOST:PORT.")
+
+    by_label = {sp.label: sp for sp in specs}
+    for flag, field_name, values in (("--network", "network", networks),
+                                     ("--station", "station", stations),
+                                     ("--channel", "channel", channels)):
+        global_val: Optional[str] = None
+        scoped: Dict[str, str] = {}
+        for raw in values:
+            label, val = _split_scoped(raw)
+            if label is None:
+                if global_val is not None:
+                    raise ValueError(
+                        f"{flag} given twice without a label "
+                        f"({global_val!r}, {val!r}); combine them as a "
+                        f"comma-separated list or scope one with LABEL=")
+                global_val = val
+            else:
+                if label not in by_label:
+                    raise ValueError(
+                        f"{flag} {raw!r}: no server labelled {label!r} "
+                        f"(known: {', '.join(labels)})")
+                if label in scoped:
+                    raise ValueError(f"{flag} given twice for {label!r}")
+                scoped[label] = val
+        for sp in specs:
+            setattr(sp, field_name, scoped.get(sp.label, global_val) or None)
+    return specs
+
+
+@dataclass
 class WebConfig:
     """Runtime configuration for the web interface."""
 
     host: str = "127.0.0.1"
     port: int = 8080
 
-    # Dashboard tab — disabled when server is None.
+    # Dashboard tab — disabled when no servers are configured. ``servers``
+    # is the multi-server form; the single-server ``server`` / ``network``
+    # / ``station`` / ``channel`` fields are kept for library callers and
+    # folded into ``servers`` when ``servers`` is empty.
+    servers: List[ServerSpec] = field(default_factory=list)
     server: Optional[str] = None
     interval: float = 30.0
     timeout: float = 30.0
@@ -71,7 +191,8 @@ class WebConfig:
 
     # Alerting (dashboard tab only). Reuses DashboardAlerter so the
     # behaviour matches seedlink-py-dashboard --alert exactly. The poll
-    # cycle is shared with the browser — no extra SeedLink traffic.
+    # cycle is shared with the browser — no extra SeedLink traffic. With
+    # several servers each gets its own alerter, tagged with its label.
     alert: bool = False
     webhook_url: Optional[str] = None
     webhook_timeout: float = 10.0
@@ -80,9 +201,21 @@ class WebConfig:
 
     debug: bool = False
 
+    def __post_init__(self) -> None:
+        if not self.servers and self.server:
+            self.servers = [ServerSpec(
+                label=_default_label(self.server), address=self.server,
+                network=self.network, station=self.station,
+                channel=self.channel,
+            )]
+
     @property
     def dashboard_enabled(self) -> bool:
-        return self.server is not None
+        return bool(self.servers)
+
+    @property
+    def multi_server(self) -> bool:
+        return len(self.servers) > 1
 
     @property
     def ppsd_enabled(self) -> bool:
@@ -122,12 +255,14 @@ class DashboardPoller:
 
     Stores results in a shared :class:`DashboardState`. The Flask routes
     read the cached state on each request, so HTTP load is decoupled from
-    server polling frequency.
+    server polling frequency. One poller runs per :class:`ServerSpec`.
     """
 
-    def __init__(self, state: DashboardState, cfg: WebConfig):
+    def __init__(self, state: DashboardState, cfg: WebConfig,
+                 spec: Optional[ServerSpec] = None):
         self.state = state
         self.cfg = cfg
+        self.spec = spec if spec is not None else cfg.servers[0]
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         # Build the DashboardConfig shim once. compute_rows only reads
@@ -142,8 +277,12 @@ class DashboardPoller:
             hostname=cfg.hostname,
             alert_settle=cfg.alert_settle,
         )
+        # Only tag alerts with the source when there is more than one, so
+        # single-server alert text is unchanged.
         self._alerter: Optional[DashboardAlerter] = (
-            DashboardAlerter(self._dash_cfg)
+            DashboardAlerter(self._dash_cfg,
+                             source=self.spec.label if cfg.multi_server
+                             else None)
             if (cfg.alert or cfg.webhook_url) else None
         )
 
@@ -151,12 +290,13 @@ class DashboardPoller:
         if self._thread and self._thread.is_alive():
             return
         self._thread = threading.Thread(
-            target=self._run, name="dashboard-poller", daemon=True
+            target=self._run, name=f"dashboard-poller-{self.spec.label}",
+            daemon=True,
         )
         self._thread.start()
         log.info(
-            "dashboard-poller started: server=%s interval=%.0fs",
-            self.cfg.server, self.cfg.interval,
+            "dashboard-poller started: %s=%s interval=%.0fs",
+            self.spec.label, self.spec.address, self.cfg.interval,
         )
 
     def stop(self) -> None:
@@ -170,21 +310,23 @@ class DashboardPoller:
             try:
                 self._poll_once()
             except Exception as e:
-                log.warning("dashboard poll failed: %s", e)
+                log.warning("dashboard poll failed (%s): %s",
+                            self.spec.label, e)
                 self.state.set_error(str(e))
             if self._stop.wait(self.cfg.interval):
                 break
 
     def _poll_once(self) -> None:
-        xml = query_info(self.cfg.server, level="STREAMS",
+        sp = self.spec
+        xml = query_info(sp.address, level="STREAMS",
                          timeout=self.cfg.timeout)
         records = parse_streams(xml)
-        if self.cfg.network or self.cfg.station:
+        if sp.network or sp.station:
             records = filter_records(
-                records, network=self.cfg.network, station=self.cfg.station,
+                records, network=sp.network, station=sp.station,
             )
-        if self.cfg.channel:
-            records = filter_by_channel(records, self.cfg.channel)
+        if sp.channel:
+            records = filter_by_channel(records, sp.channel)
         now = UTCDateTime()
         rows = compute_rows(records, now, self._dash_cfg)
         rows.sort(key=_sort_key_by_status if self.cfg.sort_by_status
@@ -338,13 +480,15 @@ def create_app(cfg: WebConfig):
 
     app = Flask(__name__)
 
-    # Stash state on the app object so background threads can reach it
-    # via app context if needed.
-    state = DashboardState() if cfg.dashboard_enabled else None
-    if state is not None:
-        poller = DashboardPoller(state, cfg)
+    # One state + poller per server, keyed by label. Insertion order is
+    # the --server order, which is also the tab order.
+    states: Dict[str, DashboardState] = {}
+    app._pollers = []  # keep refs to prevent GC
+    for spec in cfg.servers:
+        states[spec.label] = DashboardState()
+        poller = DashboardPoller(states[spec.label], cfg, spec)
         poller.start()
-        app._poller = poller  # keep a ref to prevent GC
+        app._pollers.append(poller)
 
     def _tabs():
         return {
@@ -371,13 +515,15 @@ def create_app(cfg: WebConfig):
     def dashboard_view():
         if not cfg.dashboard_enabled:
             abort(404)
-        rows, polled_at, error = state.snapshot()
+        data = dashboard_payload(cfg, states)
+        title = (cfg.servers[0].address if not cfg.multi_server
+                 else f"{len(cfg.servers)} servers")
         return render_template(
             "dashboard.html",
-            rows=rows,
-            polled_at=polled_at.isoformat() if polled_at else None,
-            error=error,
-            server=cfg.server,
+            data=data,
+            title=title,
+            multi=cfg.multi_server,
+            servers=cfg.servers,
             interval=cfg.interval,
             ok_threshold=cfg.ok_threshold,
             stale_threshold=cfg.stale_threshold,
@@ -388,24 +534,7 @@ def create_app(cfg: WebConfig):
     def dashboard_data():
         if not cfg.dashboard_enabled:
             abort(404)
-        rows, polled_at, error = state.snapshot()
-        return jsonify({
-            "rows": [
-                {
-                    "network": r["network"],
-                    "station": r["station"],
-                    "location": r["location"],
-                    "channel": r["channel"],
-                    "end_time": r["end_time"],
-                    "latency_s": r["latency_s"],
-                    "status": r["status"],
-                }
-                for r in rows
-            ],
-            "polled_at": polled_at.isoformat() if polled_at else None,
-            "error": error,
-            "counts": _status_counts(rows),
-        })
+        return jsonify(dashboard_payload(cfg, states))
 
     # ---- PPSD browser -----------------------------------------------
 
@@ -519,6 +648,71 @@ def _status_counts(rows: List[dict]) -> Dict[str, int]:
         s = r.get("status", "UNKNOWN")
         out[s] = out.get(s, 0) + 1
     return out
+
+
+def _json_row(r: dict, source: str) -> dict:
+    return {
+        "source": source,
+        "network": r["network"],
+        "station": r["station"],
+        "location": r["location"],
+        "channel": r["channel"],
+        "end_time": r["end_time"],
+        "latency_s": r["latency_s"],
+        "status": r["status"],
+    }
+
+
+def dashboard_payload(cfg: WebConfig,
+                      states: Dict[str, DashboardState]) -> dict:
+    """Build the ``/dashboard/data`` body from every server's cached state.
+
+    Top-level ``rows`` / ``counts`` / ``polled_at`` / ``error`` describe the
+    aggregate (identical to the single-server shape when there is one
+    server). ``sources`` carries the per-server breakdown the tabs use.
+    Rows are never de-duplicated across servers: the same NSLC relayed by
+    two servers appears twice, tagged by ``source``, because their
+    latencies legitimately differ.
+    """
+    sort_key = _sort_key_by_status if cfg.sort_by_status else _sort_key
+    sources = []
+    merged: List[Tuple[tuple, int, dict]] = []
+    polled: List[UTCDateTime] = []
+    errors: List[str] = []
+    for idx, spec in enumerate(cfg.servers):
+        rows, polled_at, error = states[spec.label].snapshot()
+        counts = _status_counts(rows)
+        sources.append({
+            "label": spec.label,
+            "server": spec.address,
+            "network": spec.network,
+            "station": spec.station,
+            "channel": spec.channel,
+            "polled_at": polled_at.isoformat() if polled_at else None,
+            "error": error,
+            "counts": counts,
+            "worst": (_worst_status(r["status"] for r in rows)
+                      if rows else ("STALE" if error else None)),
+            "n_rows": len(rows),
+        })
+        if polled_at:
+            polled.append(polled_at)
+        if error:
+            errors.append(f"{spec.label}: {error}" if cfg.multi_server
+                          else error)
+        for r in rows:
+            merged.append((sort_key(r), idx, _json_row(r, spec.label)))
+    # Server order breaks ties so duplicate NSLCs sit side by side.
+    merged.sort(key=lambda t: (t[0], t[1]))
+    rows_out = [t[2] for t in merged]
+    return {
+        "multi": cfg.multi_server,
+        "rows": rows_out,
+        "polled_at": max(polled).isoformat() if polled else None,
+        "error": "; ".join(errors) or None,
+        "counts": _status_counts(rows_out),
+        "sources": sources,
+    }
 
 
 def run_web(cfg: WebConfig) -> None:

@@ -19,6 +19,7 @@ __all__ = [
     "run_ppsd",
     "run_ppsd_archive",
     "run_web",
+    "ServerSpec",
     "DashboardConfig",
     "PPSDConfig",
     "PPSDArchiveConfig",
@@ -53,6 +54,7 @@ _LAZY_ATTRS = {
     "StaleWatcher":       ("monitor",      "StaleWatcher"),
     "run_web":            ("web",          "run_web"),
     "WebConfig":          ("web",          "WebConfig"),
+    "ServerSpec":         ("web",          "ServerSpec"),
     "PALETTES":           ("config",       "PALETTES"),
     "resolve_theme":      ("config",       "resolve_theme"),
     # Backward-compatible alias for PALETTES["neutral"]; predates the

@@ -1,21 +1,34 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — {{ server }}{% endblock %}
+{% block title %}Dashboard — {{ title }}{% endblock %}
 {% block content %}
 <section class="dashboard">
+  {% if multi %}
+  <nav class="subtabs" id="subtabs">
+    <a href="#all" data-tab="all"><span class="dot" id="dot-all"></span>All
+       <span class="tab-n" id="n-all"></span></a>
+    {% for s in servers %}
+    <a href="#{{ s.label }}" data-tab="{{ s.label }}" title="{{ s.address }}">
+       <span class="dot" id="dot-{{ s.label }}"></span>{{ s.label }}
+       <span class="tab-n" id="n-{{ s.label }}"></span></a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+
   <div class="meta-bar">
     <div>
-      <strong>Server:</strong> <code>{{ server }}</code>
+      <strong id="server-key">Server:</strong> <code id="server-val">{{ servers[0].address }}</code>
+      <span id="filters"></span>
       &nbsp;·&nbsp; <strong>Interval:</strong> {{ "%.0f"|format(interval) }} s
       &nbsp;·&nbsp; <strong>OK &lt;</strong> {{ "%.0f"|format(ok_threshold) }} s
       &nbsp;·&nbsp; <strong>STALE &gt;</strong> {{ "%.0f"|format(stale_threshold) }} s
     </div>
     <div class="polled-at">
-      <span id="polled-at">{{ polled_at or 'waiting for first poll…' }}</span>
+      <span id="polled-at">waiting for first poll…</span>
     </div>
   </div>
 
-  <div id="error-box" class="error-box {% if not error %}hidden{% endif %}">
-    <strong>Poll failed:</strong> <span id="error-text">{{ error or '' }}</span>
+  <div id="error-box" class="error-box hidden">
+    <strong>Poll failed:</strong> <span id="error-text"></span>
   </div>
 
   <div class="counts" id="counts-bar">
@@ -28,6 +41,7 @@
   <table class="streams">
     <thead>
       <tr>
+        <th class="col-source hidden">Source</th>
         <th>NET</th><th>STA</th><th>LOC</th><th>CHA</th>
         <th>Last Packet (UTC)</th>
         <th class="right">Latency</th>
@@ -35,13 +49,7 @@
       </tr>
     </thead>
     <tbody id="streams-tbody">
-      {% if rows %}
-        {% for r in rows %}
-          {% include "_dashboard_row.html" %}
-        {% endfor %}
-      {% else %}
-        <tr><td colspan="7" class="empty">Waiting for first poll…</td></tr>
-      {% endif %}
+      <tr><td colspan="8" class="empty">Waiting for first poll…</td></tr>
     </tbody>
   </table>
 </section>
@@ -50,6 +58,9 @@
 {% block scripts %}
 <script>
 const REFRESH_MS = 5000;
+const MULTI = {{ multi|tojson }};
+const STATUSES = ['OK', 'LAG', 'STALE', 'UNKNOWN'];
+let latest = {{ data|tojson }};
 
 function fmtLatency(s) {
   if (s === null || s === undefined) return "—";
@@ -66,9 +77,11 @@ function escapeHtml(s) {
   })[c]);
 }
 
-function renderRow(r) {
+function renderRow(r, showSource) {
   const loc = r.location || "--";
-  return `<tr class="row-${r.status}">
+  const src = showSource
+    ? `<td class="col-source">${escapeHtml(r.source)}</td>` : '';
+  return `<tr class="row-${r.status}">${src}
     <td>${escapeHtml(r.network)}</td>
     <td>${escapeHtml(r.station)}</td>
     <td>${escapeHtml(loc)}</td>
@@ -79,42 +92,98 @@ function renderRow(r) {
   </tr>`;
 }
 
+// Active sub-tab comes from the URL hash so a tab can be bookmarked.
+function activeTab() {
+  if (!MULTI) return null;
+  const h = decodeURIComponent(location.hash.slice(1));
+  return latest.sources.some(s => s.label === h) ? h : 'all';
+}
+
+function filterText(s) {
+  const parts = [];
+  if (s.network) parts.push('NET ' + s.network);
+  if (s.station) parts.push('STA ' + s.station);
+  if (s.channel) parts.push('CHA ' + s.channel);
+  return parts.length ? ' · ' + escapeHtml(parts.join(' · ')) : '';
+}
+
+function worstOf(sources) {
+  const rank = {STALE: 0, LAG: 1, UNKNOWN: 2, OK: 3};
+  let w = null;
+  for (const s of sources)
+    if (s.worst && (w === null || rank[s.worst] < rank[w])) w = s.worst;
+  return w;
+}
+
+function render() {
+  const data = latest;
+  const tab = activeTab();
+  const src = tab && tab !== 'all'
+    ? data.sources.find(s => s.label === tab) : null;
+  const showSource = MULTI && !src;
+
+  let rows, counts, polledAt, error;
+  if (src) {
+    rows = data.rows.filter(r => r.source === src.label);
+    counts = src.counts; polledAt = src.polled_at; error = src.error;
+  } else {
+    rows = data.rows; counts = data.counts;
+    polledAt = data.polled_at; error = data.error;
+  }
+
+  // Meta bar: one server's address + filters, or the list of servers.
+  const one = src || (MULTI ? null : data.sources[0]);
+  document.getElementById('server-key').textContent =
+    one ? 'Server:' : 'Servers:';
+  document.getElementById('server-val').textContent = one
+    ? one.server : data.sources.map(s => s.label).join(', ');
+  document.getElementById('filters').innerHTML = one ? filterText(one) : '';
+
+  for (const el of document.querySelectorAll('th.col-source'))
+    el.classList.toggle('hidden', !showSource);
+  const tbody = document.getElementById('streams-tbody');
+  tbody.innerHTML = rows.length
+    ? rows.map(r => renderRow(r, showSource)).join('')
+    : `<tr><td colspan="8" class="empty">${polledAt ? 'No streams.' : 'Waiting for first poll…'}</td></tr>`;
+
+  document.getElementById('polled-at').textContent =
+    polledAt || 'waiting for first poll…';
+
+  const errBox = document.getElementById('error-box');
+  errBox.classList.toggle('hidden', !error);
+  document.getElementById('error-text').textContent = error || '';
+
+  for (const k of STATUSES)
+    document.getElementById('count-' + k).textContent =
+      k + ' ' + (counts[k] || 0);
+
+  if (MULTI) {
+    const setTab = (key, worst, n) => {
+      document.getElementById('dot-' + key).className =
+        'dot' + (worst ? ' bg-' + worst : '');
+      document.getElementById('n-' + key).textContent = n;
+    };
+    setTab('all', worstOf(data.sources), data.rows.length);
+    for (const s of data.sources) setTab(s.label, s.worst, s.n_rows);
+    for (const a of document.querySelectorAll('#subtabs a'))
+      a.classList.toggle('active', a.dataset.tab === tab);
+  }
+}
+
 async function refresh() {
   try {
-    const resp = await fetch('/dashboard/data');
+    const resp = await fetch('{{ url_for("dashboard_data") }}');
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const data = await resp.json();
-
-    const tbody = document.getElementById('streams-tbody');
-    if (data.rows && data.rows.length) {
-      tbody.innerHTML = data.rows.map(renderRow).join('');
-    } else {
-      tbody.innerHTML = '<tr><td colspan="7" class="empty">No streams.</td></tr>';
-    }
-
-    document.getElementById('polled-at').textContent =
-      data.polled_at || 'waiting…';
-
-    const errBox = document.getElementById('error-box');
-    if (data.error) {
-      errBox.classList.remove('hidden');
-      document.getElementById('error-text').textContent = data.error;
-    } else {
-      errBox.classList.add('hidden');
-    }
-
-    for (const k of ['OK', 'LAG', 'STALE', 'UNKNOWN']) {
-      document.getElementById('count-' + k).textContent =
-        k + ' ' + (data.counts[k] || 0);
-    }
+    latest = await resp.json();
+    render();
   } catch (e) {
     // Network blip — leave previous render in place.
     console.warn('refresh failed:', e);
   }
 }
 
+window.addEventListener('hashchange', render);
+render();
 setInterval(refresh, REFRESH_MS);
-// Kick once on load so we don't wait the full interval after the SSR.
-refresh();
 </script>
 {% endblock %}

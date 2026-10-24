@@ -121,12 +121,15 @@ def filter_by_channel(records: list, pattern: Optional[str]) -> list:
     ``pattern=None`` or empty is a no-op. Typical uses:
     ``'EHZ'`` → exact (collapses a Shake network to one row per station);
     ``'HH?'`` → all HH-band channels; ``'*Z'`` → all verticals.
+    A comma-separated list matches any of its patterns (``'HH?,EH?'``),
+    like the NET/STA filters.
     """
     if not pattern:
         return list(records)
-    up = pattern.upper()
+    pats = [p.strip().upper() for p in pattern.split(",") if p.strip()]
     return [r for r in records
-            if fnmatch.fnmatchcase(r.get("channel", "").upper(), up)]
+            if any(fnmatch.fnmatchcase(r.get("channel", "").upper(), p)
+                   for p in pats)]
 
 
 def _fmt_latency(latency_s: Optional[float]) -> str:
@@ -432,7 +435,12 @@ class DashboardAlerter:
     without a second query.
     """
 
-    def __init__(self, cfg: DashboardConfig):
+    def __init__(self, cfg: DashboardConfig, source: Optional[str] = None):
+        # ``source`` labels which SeedLink server the rows came from when
+        # one process watches several (seedlink-py-web). It is added to the
+        # alert text and webhook body; None keeps single-server output
+        # unchanged.
+        self._source = source
         self._confirmed: Dict[str, str] = {}   # "NET.STA" -> confirmed status
         self._pending: Dict[str, str] = {}     # "NET.STA" -> candidate status
         self._pending_count: Dict[str, int] = {}  # "NET.STA" -> consecutive polls
@@ -506,7 +514,9 @@ class DashboardAlerter:
                        channels: List[dict]) -> None:
         direction = "degraded" if (_STATUS_RANK.get(now, 99)
                                    < _STATUS_RANK.get(prev, 99)) else "improved"
-        text = f"[{self._hostname}] {station}: {prev} \u2192 {now}"
+        tag = (f"[{self._hostname}] [{self._source}]" if self._source
+               else f"[{self._hostname}]")
+        text = f"{tag} {station}: {prev} \u2192 {now}"
         detail_lines = []
         for c in channels:
             loc = c.get("location") or "--"
@@ -516,9 +526,10 @@ class DashboardAlerter:
         full_text = text + "\n" + "\n".join(detail_lines)
         log.warning(full_text)
         if self._webhook_url:
+            extra = {"source": self._source} if self._source else {}
             post_webhook(
                 self._webhook_url, text=full_text, event=direction,
-                hostname=self._hostname, station=station,
+                hostname=self._hostname, station=station, **extra,
                 previous_status=prev, new_status=now,
                 color=_WEBHOOK_COLOR.get(now),
                 timeout=self._webhook_timeout,
