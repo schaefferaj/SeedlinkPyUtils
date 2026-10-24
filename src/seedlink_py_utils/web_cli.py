@@ -108,7 +108,8 @@ def build_parser():
                             "--network.")
     g_dash.add_argument("--sort-by-status", action="store_true",
                        help="Group rows by status (STALE first) instead of\n"
-                            "alphabetical NSLC ordering.")
+                            "alphabetical NSLC ordering. STALE and LAG rows\n"
+                            "run from largest latency down.")
 
     g_alert = p.add_argument_group("Alerting (dashboard tab only)")
     g_alert.add_argument("--alert", action="store_true",

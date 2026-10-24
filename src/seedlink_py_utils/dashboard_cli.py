@@ -111,8 +111,9 @@ def build_parser():
     g_out.add_argument("--sort-by-status", dest="sort_by_status",
                        action="store_true", default=False,
                        help="Group rows by status to focus attention on problems:\n"
-                            "STALE first, then LAG, UNKNOWN, OK last. Within each\n"
-                            "group rows are sorted alphabetically by NSLC.\n"
+                            "STALE first, then LAG, UNKNOWN, OK last. STALE and\n"
+                            "LAG rows run from largest latency down; UNKNOWN and\n"
+                            "OK are alphabetical by NSLC.\n"
                             "Default: alphabetical by NSLC only.")
     g_out.add_argument("--no-color", dest="color", action="store_false",
                        default=True,

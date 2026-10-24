@@ -392,12 +392,22 @@ _STATUS_RANK = {"STALE": 0, "LAG": 1, "UNKNOWN": 2, "OK": 3}
 
 
 def _sort_key_by_status(r: dict):
-    """Sort key that ranks by status first, then alphabetically by NSLC.
+    """Sort key that ranks by status first, then by latency or NSLC.
+
+    Within STALE and LAG, rows run from largest latency to smallest so the
+    worst-lagging streams lead each group (rows with no latency go last).
+    UNKNOWN and OK stay alphabetical by NSLC.
 
     Requires ``r["status"]`` to be set — so this is applied to rows
     returned from :func:`compute_rows`, not to raw INFO=STREAMS records.
     """
-    return (_STATUS_RANK.get(r.get("status", "UNKNOWN"), 99),
+    status = r.get("status", "UNKNOWN")
+    lat = r.get("latency_s")
+    if status in ("STALE", "LAG"):
+        lat_key = -lat if lat is not None else float("inf")
+    else:
+        lat_key = 0.0
+    return (_STATUS_RANK.get(status, 99), lat_key,
             r.get("network", ""), r.get("station", ""),
             r.get("location", ""), r.get("channel", ""))
 

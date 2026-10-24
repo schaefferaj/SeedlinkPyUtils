@@ -1053,7 +1053,7 @@ Exactly one of `-I/-L/-Q/-G/-C` is required.
 | `--network`, `-n` | — | Filter by network code (exact match, case-insensitive) |
 | `--station`, `-S` | — | Filter by station code (exact match, case-insensitive) |
 | `--channel`, `-c` | — | Filter by channel code; supports `?` / `*` wildcards (e.g. `EHZ`, `HH?`, `*Z`) |
-| `--sort-by-status` | off | Group rows by status: STALE, LAG, UNKNOWN, OK — alphabetical by NSLC within each group |
+| `--sort-by-status` | off | Group rows by status: STALE, LAG, UNKNOWN, OK. STALE and LAG run from largest latency down; UNKNOWN and OK are alphabetical by NSLC |
 | `--alert` | off | Enable transition alerts (log + optional webhook on STALE transitions) |
 | `--webhook` | — | Slack-compatible incoming-webhook URL for STALE / recovery alerts |
 | `--webhook-timeout` | `10` | Per-request webhook POST timeout (seconds) |
@@ -1116,7 +1116,7 @@ Exactly one of `-I/-L/-Q/-G/-C` is required.
 | `--network`, `-n` | — | Dashboard filter; comma-separated list OK (`PQ,NY`) |
 | `--station`, `-S` | — | Dashboard station filter; comma-separated list OK |
 | `--channel`, `-c` | — | Dashboard channel filter; supports `?` / `*` wildcards |
-| `--sort-by-status` | off | Group dashboard rows by status (STALE first) |
+| `--sort-by-status` | off | Group dashboard rows by status (STALE first; STALE/LAG by largest latency) |
 | `--alert` | off | Enable station-level transition alerts (log + optional webhook). Same logic as `seedlink-py-dashboard --alert`; shares the existing poll, no extra SeedLink traffic |
 | `--webhook` | — | Slack-compatible incoming-webhook URL. Implies `--alert` |
 | `--webhook-timeout` | `10` | Per-request timeout for the webhook POST (seconds) |
