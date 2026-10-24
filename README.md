@@ -449,7 +449,7 @@ seedlink-py-info -G
 seedlink-py-info -C
 ```
 
-The default server is `rtserve.iris.washington.edu:18000`. Pass any other
+The default server is `rtserve.earthscope.org:18000`. Pass any other
 `host:port` as a positional argument.
 
 Run `seedlink-py-info --help` for the full list of options.
@@ -462,7 +462,7 @@ OK / LAG / STALE status. Leave it running in a spare terminal or on a side
 monitor to keep an eye on which streams are actually flowing.
 
 ```bash
-# Default server (IRIS), 30 s interval
+# Default server (EarthScope), 30 s interval
 seedlink-py-dashboard
 
 # Just CN stations, faster polling
@@ -529,7 +529,7 @@ Useful for leaving up on a side monitor to track station noise
 performance in real time.
 
 ```bash
-# Defaults: IRIS SeedLink + EarthScope FDSN, McNamara-standard 3600 s segments
+# Defaults: EarthScope SeedLink + FDSN, McNamara-standard 3600 s segments
 seedlink-py-ppsd IU.ANMO.00.BHZ
 
 # Dark mode, fullscreen (press Esc to exit)
@@ -691,8 +691,8 @@ pip install -e '.[web]'
 Then run it. At least one of `--server` or `--ppsd-root` must be supplied:
 
 ```bash
-# Both tabs: live dashboard against IRIS + PPSD archive browser
-seedlink-py-web --server rtserve.iris.washington.edu:18000 \
+# Both tabs: live dashboard against EarthScope + PPSD archive browser
+seedlink-py-web --server rtserve.earthscope.org:18000 \
     --ppsd-root /data/ppsd
 
 # Dashboard only, focused on a local Shake, faster polling
@@ -800,7 +800,7 @@ from seedlink_py_utils.logging_setup import setup_logger
 
 setup_logger(log_file="/var/log/slarchiver.log")
 run_archiver(
-    server="rtserve.iris.washington.edu:18000",
+    server="rtserve.earthscope.org:18000",
     streams=["CN.PGC..HH?", "CN.NLLB..HH?"],
     archive_root="/data/sds",
     state_file="/var/lib/slarchiver/state.txt",
@@ -815,7 +815,7 @@ run_archiver(
 from seedlink_py_utils import query_info
 from seedlink_py_utils.info import parse_streams, filter_records
 
-xml = query_info("rtserve.iris.washington.edu:18000", level="STREAMS")
+xml = query_info("rtserve.earthscope.org:18000", level="STREAMS")
 streams = filter_records(parse_streams(xml), network="CN")
 for s in streams:
     print(s["network"], s["station"], s["location"], s["channel"])
@@ -854,7 +854,7 @@ from seedlink_py_utils import WebConfig, run_web
 run_web(WebConfig(
     host="127.0.0.1",
     port=8080,
-    server="rtserve.iris.washington.edu:18000",
+    server="rtserve.earthscope.org:18000",
     ppsd_root="/data/ppsd",
 ))
 ```
@@ -864,7 +864,7 @@ run_web(WebConfig(
 | Flag | Default | Description |
 |---|---|---|
 | `stream` (positional) | — | `NET.STA.LOC.CHA`, e.g. `IU.ANMO.00.BHZ` |
-| `--server`, `-s` | `rtserve.iris.washington.edu:18000` | SeedLink server `host:port` |
+| `--server`, `-s` | `rtserve.earthscope.org:18000` | SeedLink server `host:port` |
 | `--fdsn` | `https://service.earthscope.org` | FDSN-WS base URL (empty string to disable) |
 | `--inventory` | — | Local StationXML file (overrides `--fdsn`) |
 | `--no-cache` | off | Skip the on-disk inventory cache |
@@ -1004,7 +1004,7 @@ seedlink-py-ppsd-archive 'CN.*..HHZ' --output-root /data/ppsd \
 | Flag | Default | Description |
 |---|---|---|
 | `streams` (positional, 1+) | — | One or more `NET.STA.LOC.CHA` (wildcards in LOC/CHA) |
-| `--server`, `-s` | `rtserve.iris.washington.edu:18000` | SeedLink server `host:port` |
+| `--server`, `-s` | `rtserve.earthscope.org:18000` | SeedLink server `host:port` |
 | `--archive`, `-a` | — (required) | SDS archive root directory |
 | `--state-file` | — | SeedLink state file for resume on restart |
 | `--begin-time` | — | Replay window start (ISO 8601) |
@@ -1026,7 +1026,7 @@ seedlink-py-ppsd-archive 'CN.*..HHZ' --output-root /data/ppsd \
 
 | Flag | Default | Description |
 |---|---|---|
-| `server` (positional) | `rtserve.iris.washington.edu:18000` | SeedLink server `host:port` |
+| `server` (positional) | `rtserve.earthscope.org:18000` | SeedLink server `host:port` |
 | `-I`, `--id` | — | Server identification + version |
 | `-L`, `--stations` | — | List stations |
 | `-Q`, `--streams` | — | List streams (NSLC + sample-rate + time range) |
@@ -1044,7 +1044,7 @@ Exactly one of `-I/-L/-Q/-G/-C` is required.
 
 | Flag | Default | Description |
 |---|---|---|
-| `server` (positional) | `rtserve.iris.washington.edu:18000` | SeedLink server `host:port` |
+| `server` (positional) | `rtserve.earthscope.org:18000` | SeedLink server `host:port` |
 | `--interval` | `30` | Poll interval in seconds |
 | `--once` | off | Run one poll and exit (no screen clear) |
 | `--timeout` | `30` | Per-poll socket timeout (seconds) |
@@ -1065,7 +1065,7 @@ Exactly one of `-I/-L/-Q/-G/-C` is required.
 | Flag | Default | Description |
 |---|---|---|
 | `stream` (positional) | — | `NET.STA.LOC.CHA`, e.g. `IU.ANMO.00.BHZ` |
-| `--server`, `-s` | `rtserve.iris.washington.edu:18000` | SeedLink server `host:port` |
+| `--server`, `-s` | `rtserve.earthscope.org:18000` | SeedLink server `host:port` |
 | `--fdsn` | `https://service.earthscope.org` | FDSN-WS base URL (empty string requires `--inventory`) |
 | `--inventory` | — | Local StationXML file (overrides `--fdsn`) |
 | `--no-cache` | off | Skip the on-disk inventory cache |
@@ -1088,7 +1088,7 @@ Exactly one of `-I/-L/-Q/-G/-C` is required.
 | `--output-root` | — (required) | Root directory for NPZs and PNGs |
 | `--period` | `weekly` | One or more of `daily weekly monthly quarterly yearly` |
 | `--render-interval` | `1800` | Seconds between re-render cycles |
-| `--server`, `-s` | `rtserve.iris.washington.edu:18000` | SeedLink server `host:port` |
+| `--server`, `-s` | `rtserve.earthscope.org:18000` | SeedLink server `host:port` |
 | `--fdsn` | `https://service.earthscope.org` | FDSN-WS base URL |
 | `--inventory` | — | Local StationXML file (overrides `--fdsn`) |
 | `--no-cache` | off | Skip the on-disk inventory cache |

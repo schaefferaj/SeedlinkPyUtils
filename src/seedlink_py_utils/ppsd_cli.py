@@ -27,7 +27,7 @@ def build_parser():
         formatter_class=_Formatter,
         epilog=(
             "Examples:\n"
-            "  seedlink-py-ppsd IU.ANMO.00.BHZ                      # defaults (IRIS + EarthScope)\n"
+            "  seedlink-py-ppsd IU.ANMO.00.BHZ                      # defaults (EarthScope SeedLink + FDSN)\n"
             "\n"
             "  seedlink-py-ppsd CN.PGC..HHZ --dark-mode --fullscreen\n"
             "\n"
@@ -52,7 +52,7 @@ def build_parser():
 
     # ---- Data source ------------------------------------------------------
     g_src = p.add_argument_group("Data source")
-    g_src.add_argument("--server", "-s", default="rtserve.iris.washington.edu:18000",
+    g_src.add_argument("--server", "-s", default="rtserve.earthscope.org:18000",
                        help="SeedLink server host:port.")
     g_src.add_argument("--fdsn", default="https://service.earthscope.org",
                        help="FDSN web-service base URL for response metadata.\n"

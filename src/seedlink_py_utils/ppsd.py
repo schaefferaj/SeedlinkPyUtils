@@ -69,7 +69,7 @@ class PPSDConfig:
     """Runtime configuration for the real-time PPSD monitor."""
 
     nslc: Tuple[str, str, str, str]
-    seedlink_server: str = "rtserve.iris.washington.edu:18000"
+    seedlink_server: str = "rtserve.earthscope.org:18000"
     fdsn_server: Optional[str] = "https://service.earthscope.org"
     inventory_path: Optional[str] = None
     no_cache: bool = False

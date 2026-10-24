@@ -100,7 +100,7 @@ def build_parser():
     # ---- Data source ---------------------------------------------------
     g_src = p.add_argument_group("Data source")
     g_src.add_argument("--server", "-s",
-                       default="rtserve.iris.washington.edu:18000",
+                       default="rtserve.earthscope.org:18000",
                        help="SeedLink server host:port.")
     g_src.add_argument("--fdsn", default="https://service.earthscope.org",
                        help="FDSN web-service base URL for response metadata.\n"

@@ -84,7 +84,7 @@ class PPSDArchiveConfig:
 
     output_root: str = "./ppsd"
 
-    seedlink_server: str = "rtserve.iris.washington.edu:18000"
+    seedlink_server: str = "rtserve.earthscope.org:18000"
     fdsn_server: Optional[str] = "https://service.earthscope.org"
     inventory_path: Optional[str] = None
     no_cache: bool = False

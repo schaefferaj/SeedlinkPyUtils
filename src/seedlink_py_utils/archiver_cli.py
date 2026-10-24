@@ -42,7 +42,7 @@ def build_parser():
 
     # ---- Server & output --------------------------------------------------
     g_io = p.add_argument_group("Server & output")
-    g_io.add_argument("--server", "-s", default="rtserve.iris.washington.edu:18000",
+    g_io.add_argument("--server", "-s", default="rtserve.earthscope.org:18000",
                       help="SeedLink server host:port.")
     g_io.add_argument("--archive", "-a", required=True,
                       help="Root directory of the SDS archive.")

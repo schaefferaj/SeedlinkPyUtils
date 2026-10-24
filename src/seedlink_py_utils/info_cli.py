@@ -60,7 +60,7 @@ def build_parser():
         ),
     )
 
-    p.add_argument("server", nargs="?", default="rtserve.iris.washington.edu:18000",
+    p.add_argument("server", nargs="?", default="rtserve.earthscope.org:18000",
                    help="SeedLink server host:port.")
 
     # ---- Query type (mutually exclusive, one required) -------------------

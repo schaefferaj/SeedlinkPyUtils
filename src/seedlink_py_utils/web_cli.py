@@ -40,8 +40,8 @@ def build_parser():
         formatter_class=_Formatter,
         epilog=(
             "Examples:\n"
-            "  # Both tabs: live dashboard against IRIS + PPSD archive browser\n"
-            "  seedlink-py-web --server rtserve.iris.washington.edu:18000 \\\n"
+            "  # Both tabs: live dashboard against EarthScope + PPSD archive browser\n"
+            "  seedlink-py-web --server rtserve.earthscope.org:18000 \\\n"
             "      --ppsd-root /data/ppsd\n"
             "\n"
             "  # Dashboard only, faster polling, focused on one network\n"
@@ -52,9 +52,9 @@ def build_parser():
             "\n"
             "  # Several servers: one sub-tab each plus an aggregated 'All' tab.\n"
             "  # Plain filters apply to every server; LABEL=VALUE scopes one.\n"
-            "  seedlink-py-web --server iris=rtserve.iris.washington.edu:18000 \\\n"
+            "  seedlink-py-web --server earthscope=rtserve.earthscope.org:18000 \\\n"
             "      --server hakai=seiscomp.hakai.org:18000 \\\n"
-            "      --network iris=CN,IU --network hakai=AM,PQ --channel 'HH?,EH?'\n"
+            "      --network earthscope=IU,US --network hakai=AM,PQ --channel 'HH?,EH?'\n"
             "\n"
             "  # LAN-visible (default is localhost only)\n"
             "  seedlink-py-web --server rs.local:18000 --host 0.0.0.0 --port 8888\n"

@@ -30,7 +30,7 @@ def build_parser():
         formatter_class=_Formatter,
         epilog=(
             "Examples:\n"
-            "  seedlink-py-dashboard                                  # default server (IRIS)\n"
+            "  seedlink-py-dashboard                                  # default server (EarthScope)\n"
             "\n"
             "  seedlink-py-dashboard --network PQ --interval 10       # just PQ stations, fast poll\n"
             "\n"
@@ -52,7 +52,7 @@ def build_parser():
         ),
     )
 
-    p.add_argument("server", nargs="?", default="rtserve.iris.washington.edu:18000",
+    p.add_argument("server", nargs="?", default="rtserve.earthscope.org:18000",
                    help="SeedLink server host:port.")
 
     g_poll = p.add_argument_group("Polling")
