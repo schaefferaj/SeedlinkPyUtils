@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}seedlink-py-web{% endblock %}</title>
+<script>
+  // Apply the saved theme before first paint so the page doesn't flash.
+  try {
+    if (localStorage.getItem('theme') === 'light')
+      document.documentElement.dataset.theme = 'light';
+  } catch (e) {}
+</script>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -19,10 +26,28 @@
          class="{% if request.endpoint and request.endpoint.startswith('ppsd_') %}active{% endif %}">PPSD Archive</a>
     {% endif %}
   </nav>
+  <button type="button" class="theme-toggle" id="theme-toggle"></button>
 </header>
 <main{% block main_attrs %}{% endblock %}>
 {% block content %}{% endblock %}
 </main>
+<script>
+(function () {
+  const root = document.documentElement;
+  const btn = document.getElementById('theme-toggle');
+  const label = () => {
+    btn.textContent = root.dataset.theme === 'light' ? 'Dark' : 'Light';
+    btn.title = 'Switch to ' + btn.textContent.toLowerCase() + ' theme';
+  };
+  btn.addEventListener('click', () => {
+    const light = root.dataset.theme !== 'light';
+    if (light) root.dataset.theme = 'light'; else delete root.dataset.theme;
+    try { localStorage.setItem('theme', light ? 'light' : 'dark'); } catch (e) {}
+    label();
+  });
+  label();
+})();
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

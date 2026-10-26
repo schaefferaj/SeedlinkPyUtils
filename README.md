@@ -151,6 +151,8 @@ built on [ObsPy](https://docs.obspy.org). Provides:
 - Wide windows split the table into 2 or 3 side-by-side columns
   (filled across, then down, so STALE and LAG rows spread over the top
   of every column), re-flowing live as the window is resized
+- Dark theme by default; a **Light** button in the header switches
+  themes, remembered per browser
 - **Several servers at once**: repeat `--server [LABEL=]HOST:PORT` for an
   aggregated "All" sub-tab plus one sub-tab per server; filters can be
   global or scoped per server with `LABEL=VALUE`

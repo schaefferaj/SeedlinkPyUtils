@@ -11,6 +11,24 @@
   --lag: #ff9900;
   --stale: #cc0000;
   --unknown: #888888;
+  --hover: rgba(255, 255, 255, 0.03);
+  --error-bg: rgba(204, 0, 0, 0.15);
+}
+
+/* Light theme: toggled by the header button, stored per browser. */
+:root[data-theme="light"] {
+  --bg: #f4f5f7;
+  --panel: #ffffff;
+  --fg: #1f2328;
+  --fg-dim: #5f6670;
+  --accent: #0f7b6c;
+  --border: #d5d9de;
+  --ok: #1a8a5a;
+  --lag: #b86e00;
+  --stale: #c40000;
+  --unknown: #6e6e6e;
+  --hover: rgba(0, 0, 0, 0.04);
+  --error-bg: rgba(196, 0, 0, 0.08);
 }
 
 * { box-sizing: border-box; }
@@ -48,6 +66,19 @@ header h1 { margin: 0; font-size: 1.2rem; font-weight: 600; }
 header h1 a { color: var(--fg); }
 
 header nav { display: flex; gap: 1.5rem; }
+
+.theme-toggle {
+  margin-left: auto;
+  background: none;
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.2rem 0.7rem;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.theme-toggle:hover { color: var(--fg); border-color: var(--fg-dim); }
 header nav a {
   color: var(--fg-dim);
   padding: 0.25rem 0;
@@ -92,7 +123,7 @@ h3 { font-weight: 500; }
 }
 
 .error-box {
-  background: rgba(204, 0, 0, 0.15);
+  background: var(--error-bg);
   border-left: 3px solid var(--stale);
   padding: 0.5rem 1rem;
   margin-bottom: 0.75rem;
@@ -141,7 +172,7 @@ table.streams th {
 }
 
 table.streams td.right { text-align: right; }
-table.streams tbody tr:hover { background: rgba(255, 255, 255, 0.03); }
+table.streams tbody tr:hover { background: var(--hover); }
 
 .badge {
   display: inline-block;
