@@ -149,8 +149,8 @@ built on [ObsPy](https://docs.obspy.org). Provides:
   `seedlink-py-dashboard`. Background polling thread, JS auto-refresh
   every 5 s, same OK/LAG/STALE colour-coding
 - Wide windows split the table into 2 or 3 side-by-side columns
-  (filled top to bottom, then left to right), re-flowing live as the
-  window is resized
+  (filled across, then down, so STALE and LAG rows spread over the top
+  of every column), re-flowing live as the window is resized
 - **Several servers at once**: repeat `--server [LABEL=]HOST:PORT` for an
   aggregated "All" sub-tab plus one sub-tab per server; filters can be
   global or scoped per server with `LABEL=VALUE`

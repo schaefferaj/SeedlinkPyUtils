@@ -292,7 +292,8 @@ def render(rows: List[dict], cfg: DashboardConfig, server: str,
     terminal height (via :func:`shutil.get_terminal_size`) and append a
     "... N more rows hidden" notice summarising what was dropped by
     status bucket. If the terminal is wide enough, the table is rendered
-    in two side-by-side columns before falling back to truncation. The
+    in two side-by-side columns (filled left-right, then down) before
+    falling back to truncation. The
     banner and summary footer always reflect the **full** row set, so
     the counts stay accurate regardless of truncation or column layout.
     """
@@ -335,10 +336,12 @@ def render(rows: List[dict], cfg: DashboardConfig, server: str,
         out.append(hdr_line)
         out.append(div_line)
 
-        mid = (len(rows) + 1) // 2
-        left = rows[:mid]
-        right = rows[mid:]
-        for i in range(mid):
+        # Row-major fill: consecutive rows alternate left/right, so the
+        # head of the sort order (STALE, then LAG under --sort-by-status)
+        # spreads across the top lines instead of filling the left column.
+        left = rows[0::2]
+        right = rows[1::2]
+        for i in range(len(left)):
             l_text = _format_row(left[i], cfg.color)
             l_pad = _ROW_WIDTH - len(_format_row_plain(left[i]))
             if i < len(right):

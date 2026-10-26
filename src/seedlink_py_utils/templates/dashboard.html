@@ -181,8 +181,9 @@ function tableHtml(rows, showSource) {
     </tr></thead><tbody>${rows.map(r => renderRow(r, showSource)).join('')}</tbody></table>`;
 }
 
-// Split rows column-major (fill column 1 top to bottom, then column 2)
-// so the sort order reads naturally and STALE rows stay top-left.
+// Split rows row-major: row i goes to column i % n, so the head of the
+// sort order (STALE, then LAG) spreads across the top of every column
+// rather than filling column 1 first.
 function renderTables() {
   if (!current) return;
   const {rows, showSource, polledAt} = current;
@@ -195,9 +196,8 @@ function renderTables() {
     return;
   }
   const n = Math.min(numCols(showSource), rows.length);
-  const per = Math.ceil(rows.length / n);
-  const parts = [];
-  for (let i = 0; i < n; i++) parts.push(rows.slice(i * per, (i + 1) * per));
+  const parts = Array.from({length: n}, () => []);
+  rows.forEach((r, i) => parts[i % n].push(r));
   renderedCols = n;
   box.style.setProperty('--ncols', n);
   box.innerHTML = parts.filter(p => p.length).map(p => tableHtml(p, showSource)).join('');
