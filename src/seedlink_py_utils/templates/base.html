@@ -20,7 +20,7 @@
     {% endif %}
   </nav>
 </header>
-<main>
+<main{% block main_attrs %}{% endblock %}>
 {% block content %}{% endblock %}
 </main>
 {% block scripts %}{% endblock %}

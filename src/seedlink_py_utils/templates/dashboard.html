@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — {{ title }}{% endblock %}
+{% block main_attrs %} class="wide"{% endblock %}
 {% block content %}
 <section class="dashboard">
   {% if multi %}
@@ -38,20 +39,12 @@
     <span class="status-UNKNOWN" id="count-UNKNOWN">UNKNOWN 0</span>
   </div>
 
-  <table class="streams">
-    <thead>
-      <tr>
-        <th class="col-source hidden">Source</th>
-        <th>NET</th><th>STA</th><th>LOC</th><th>CHA</th>
-        <th>Last Packet (UTC)</th>
-        <th class="right">Latency</th>
-        <th>Status</th>
-      </tr>
-    </thead>
-    <tbody id="streams-tbody">
-      <tr><td colspan="8" class="empty">Waiting for first poll…</td></tr>
-    </tbody>
-  </table>
+  <!-- One table per column; JS picks 1-3 columns from the available width. -->
+  <div class="table-cols" id="table-cols">
+    <table class="streams"><tbody>
+      <tr><td class="empty">Waiting for first poll…</td></tr>
+    </tbody></table>
+  </div>
 </section>
 {% endblock %}
 
@@ -60,6 +53,9 @@
 const REFRESH_MS = 5000;
 const MULTI = {{ multi|tojson }};
 const STATUSES = ['OK', 'LAG', 'STALE', 'UNKNOWN'];
+// Minimum comfortable width of one table column, with and without the
+// Source column. Below 2x this the page stays single-column.
+const COL_MIN_PX = 600, COL_MIN_PX_SOURCE = 700, MAX_COLS = 3;
 let latest = {{ data|tojson }};
 
 function fmtLatency(s) {
@@ -139,12 +135,8 @@ function render() {
     ? one.server : data.sources.map(s => s.label).join(', ');
   document.getElementById('filters').innerHTML = one ? filterText(one) : '';
 
-  for (const el of document.querySelectorAll('th.col-source'))
-    el.classList.toggle('hidden', !showSource);
-  const tbody = document.getElementById('streams-tbody');
-  tbody.innerHTML = rows.length
-    ? rows.map(r => renderRow(r, showSource)).join('')
-    : `<tr><td colspan="8" class="empty">${polledAt ? 'No streams.' : 'Waiting for first poll…'}</td></tr>`;
+  current = {rows, showSource, polledAt};
+  renderTables();
 
   document.getElementById('polled-at').textContent =
     polledAt || 'waiting for first poll…';
@@ -169,6 +161,58 @@ function render() {
       a.classList.toggle('active', a.dataset.tab === tab);
   }
 }
+
+// Last rendered row set, kept so a resize can re-split it without
+// waiting for the next poll.
+let current = null;
+let renderedCols = 0;
+
+function numCols(showSource) {
+  const width = document.getElementById('table-cols').clientWidth;
+  const min = showSource ? COL_MIN_PX_SOURCE : COL_MIN_PX;
+  return Math.max(1, Math.min(MAX_COLS, Math.floor(width / min)));
+}
+
+function tableHtml(rows, showSource) {
+  const src = showSource ? '<th class="col-source">Source</th>' : '';
+  return `<table class="streams"><thead><tr>${src}
+    <th>NET</th><th>STA</th><th>LOC</th><th>CHA</th>
+    <th>Last Packet (UTC)</th><th class="right">Latency</th><th>Status</th>
+    </tr></thead><tbody>${rows.map(r => renderRow(r, showSource)).join('')}</tbody></table>`;
+}
+
+// Split rows column-major (fill column 1 top to bottom, then column 2)
+// so the sort order reads naturally and STALE rows stay top-left.
+function renderTables() {
+  if (!current) return;
+  const {rows, showSource, polledAt} = current;
+  const box = document.getElementById('table-cols');
+  if (!rows.length) {
+    renderedCols = 1;
+    box.style.setProperty('--ncols', 1);
+    box.innerHTML = `<table class="streams"><tbody><tr><td class="empty">${
+      polledAt ? 'No streams.' : 'Waiting for first poll…'}</td></tr></tbody></table>`;
+    return;
+  }
+  const n = Math.min(numCols(showSource), rows.length);
+  const per = Math.ceil(rows.length / n);
+  const parts = [];
+  for (let i = 0; i < n; i++) parts.push(rows.slice(i * per, (i + 1) * per));
+  renderedCols = n;
+  box.style.setProperty('--ncols', n);
+  box.innerHTML = parts.filter(p => p.length).map(p => tableHtml(p, showSource)).join('');
+}
+
+// Re-split live as the window (or the area) is resized. Only re-render
+// when the column count actually changes. ResizeObserver catches layout
+// changes that aren't window resizes; the resize listener is the
+// belt-and-braces path for the common case.
+function maybeRelayout() {
+  if (current && current.rows.length && numCols(current.showSource) !== renderedCols)
+    renderTables();
+}
+new ResizeObserver(maybeRelayout).observe(document.getElementById('table-cols'));
+window.addEventListener('resize', maybeRelayout);
 
 async function refresh() {
   try {

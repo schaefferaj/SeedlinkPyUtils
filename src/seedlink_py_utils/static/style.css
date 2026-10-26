@@ -328,3 +328,14 @@ tr.row-UNKNOWN td:first-child { border-left: 3px solid var(--unknown); }
 .dot.bg-UNKNOWN { background: var(--unknown); }
 
 table.streams td.col-source { color: var(--accent); }
+
+/* ---- dashboard multi-column layout ---- */
+
+main.wide { max-width: none; }
+
+.table-cols {
+  display: grid;
+  grid-template-columns: repeat(var(--ncols, 1), minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
