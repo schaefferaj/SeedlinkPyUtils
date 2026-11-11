@@ -36,6 +36,7 @@ import os
 import signal
 import tempfile
 import threading
+import time
 import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -108,6 +109,18 @@ class PPSDArchiveConfig:
     # the light variant, because these PNGs are viewed on white (a browser
     # tab, a report, a printout). "print" is the greyscale option.
     palette: str = DEFAULT_PALETTE
+
+    # Backfill: periodically look back this many days for windows with
+    # no PSD (station outages, archiver downtime) and fill them from FDSN
+    # dataselect, then re-render the buckets that changed. 0 disables.
+    backfill_days: float = 0.0
+    # Dataselect base URL; None means use fdsn_server.
+    backfill_fdsn: Optional[str] = None
+    # Seconds between backfill passes once caught up.
+    backfill_interval: float = 21600.0
+    # Seconds before re-requesting a stretch that yielded no new PSDs
+    # (data that genuinely doesn't exist, e.g. a dead station).
+    backfill_retry: float = 86400.0
 
     # Per-NSLC response-load failures are logged and the NSLC is
     # skipped from the subscription list. If *all* NSLCs fail, we
@@ -195,6 +208,77 @@ def expected_psds(period_duration: float, ppsd_length: float,
     """
     step = max(ppsd_length * (1.0 - overlap), 1.0)
     return max(1, int(period_duration / step))
+
+
+# --------------------------------------------------------------------------- #
+# Backfill planning — pure functions
+# --------------------------------------------------------------------------- #
+
+def find_holes(
+    times: List[UTCDateTime],
+    window_start: UTCDateTime,
+    window_end: UTCDateTime,
+    step: float,
+) -> List[Tuple[UTCDateTime, UTCDateTime]]:
+    """Return the stretches of ``[window_start, window_end)`` with no PSD.
+
+    ``times`` are PSD start times (``ppsd.times_processed``). Consecutive
+    PSDs on continuous data sit one ``step`` apart; a larger spacing
+    means windows are missing. Each hole starts one step after the PSD
+    before it, so filling it continues the existing time grid and ObsPy
+    accepts the new windows (they overlap their neighbours by exactly the
+    normal amount). A hole runs up to the start of the next PSD, or to
+    ``window_end``. Holes shorter than one step are ignored.
+    """
+    ts = sorted(t for t in times if window_start - step <= t < window_end)
+    holes = []
+    cursor = window_start
+    if ts and ts[0] > window_start:
+        # Put a leading hole on the first PSD's grid too.
+        cursor = ts[0] - int((ts[0] - window_start) // step) * step
+    for t in ts:
+        if t - cursor >= step:
+            holes.append((cursor, t))
+        cursor = max(cursor, t + step)
+    if window_end - cursor >= step:
+        holes.append((cursor, window_end))
+    return holes
+
+
+def chunk_hole(
+    start: UTCDateTime,
+    end: UTCDateTime,
+    ppsd_length: float,
+    chunk: float = 86400.0,
+) -> List[Tuple[UTCDateTime, UTCDateTime]]:
+    """Split a hole into fetch ranges of about ``chunk`` seconds.
+
+    Chunk starts stay on the hole's grid (``chunk`` is a whole number of
+    steps for the usual 1 h / 50 % segmentation) and each fetch runs
+    ``ppsd_length`` past its chunk, so windows straddling a chunk
+    boundary still get computed; the repeats are skipped by ObsPy as
+    already covered. The last fetch also runs ``ppsd_length`` past the
+    hole so its final windows have data to the end.
+    """
+    out = []
+    c = start
+    while c < end:
+        out.append((c, min(c + chunk, end) + ppsd_length))
+        c += chunk
+    return out
+
+
+def buckets_touched(
+    times: List[UTCDateTime],
+    periods: Tuple[str, ...],
+) -> Dict[Tuple[str, str], UTCDateTime]:
+    """Map ``(period, bucket_key)`` → a time inside it, for every bucket
+    that contains at least one of ``times``."""
+    out: Dict[Tuple[str, str], UTCDateTime] = {}
+    for t in times:
+        for period in periods:
+            out.setdefault((period, bucket_key(period, t)), t)
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -492,6 +576,190 @@ def _load_inventories(
     return inventories
 
 
+def _render_and_log(
+    cfg: PPSDArchiveConfig,
+    ppsd: PPSD,
+    nslc: Tuple[str, str, str, str],
+    period: str,
+    t: UTCDateTime,
+    prefix: str = "",
+) -> None:
+    """Render the ``period`` bucket containing ``t`` and log its fill."""
+    start, end = bucket_bounds(period, t)
+    key = bucket_key(period, t)
+    png = _png_path(cfg.output_root, nslc, period, key)
+    try:
+        got, expected = _render_bucket_png(
+            ppsd, nslc, period, start, end,
+            cfg.cmap, cfg.show_noise_models, png, cfg.palette,
+        )
+        pct = int(round(100.0 * got / expected)) if expected else 0
+        logger.info("  %s%s %s %s: %d / %d PSDs (%d%%) → %s",
+                    prefix, ".".join(nslc), period, key, got, expected,
+                    pct, png)
+    except Exception as e:
+        logger.exception("  %s%s %s %s: render failed: %s",
+                         prefix, ".".join(nslc), period, key, e)
+
+
+def _add_quietly(ppsd: PPSD, data, nslc) -> None:
+    """``ppsd.add`` with the routine warnings silenced and response
+    failures logged. A segment skipped for want of a response is
+    otherwise invisible."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        warnings.filterwarnings(
+            "ignore", message=_SHORT_TRACE_WARNING_PATTERN,
+            category=UserWarning,
+        )
+        warnings.filterwarnings(
+            "ignore", message=_ALREADY_COVERED_WARNING_PATTERN,
+            category=UserWarning,
+        )
+        ppsd.add(data)
+    n_resp_fail = sum("response" in str(w.message) for w in caught)
+    if n_resp_fail:
+        logger.warning(
+            "  %s: %d segment(s) skipped — no matching response.",
+            ".".join(nslc), n_resp_fail,
+        )
+
+
+class _Backfiller:
+    """Fills PSD holes from FDSN dataselect, a slice at a time.
+
+    Each pass walks the streams round-robin, finds holes in the last
+    ``backfill_days`` (stopping short of the stretch the live SeedLink
+    buffer still covers), fetches them a day at a time, adds them to the
+    master PPSD, re-renders every bucket that gained PSDs and saves the
+    NPZ. A pass works to a deadline and resumes where it stopped, so a
+    big first catch-up never holds off the regular render tick for long.
+
+    A fetch that adds nothing (no data, or data that can't make a PSD) is
+    remembered and not re-requested for ``backfill_retry`` seconds, so a
+    dead station isn't downloaded over and over. That memory is per
+    process; a restart retries everything once.
+    """
+
+    # One request per day of data: ~35 MB of 100 Hz int32 at most.
+    CHUNK = 86400.0
+
+    def __init__(self, cfg: PPSDArchiveConfig, live_margin: float):
+        from obspy.clients.fdsn import Client
+        self.cfg = cfg
+        self.url = cfg.backfill_fdsn or cfg.fdsn_server
+        self.client = Client(self.url, timeout=300)
+        self.live_margin = live_margin
+        self.step = cfg.ppsd_length * (1.0 - cfg.overlap)
+        self.cursor = 0           # next stream index in the current pass
+        self.pass_open = False    # a pass is in progress
+        self.last_pass_done: Optional[UTCDateTime] = None
+        self.no_gain: Dict[Tuple, UTCDateTime] = {}  # (nslc, t0) -> when
+        self._pass_stats = [0, set(), 0]  # PSDs added, streams, PNGs
+
+    def due(self, now: UTCDateTime) -> bool:
+        return (self.pass_open or self.last_pass_done is None
+                or now - self.last_pass_done >= self.cfg.backfill_interval)
+
+    def run(self, nslcs, masters, inventories, deadline: float,
+            shutdown: "_ShutdownSignal") -> None:
+        """Work through streams until the pass ends, ``deadline``
+        (``time.monotonic()``) passes, or shutdown is requested."""
+        if not self.pass_open:
+            self.pass_open = True
+            self.cursor = 0
+            self._pass_stats = [0, set(), 0]
+            logger.info("[backfill] pass begin: %d stream(s), last %g day(s), "
+                        "from %s", len(nslcs), self.cfg.backfill_days,
+                        self.url)
+        while self.cursor < len(nslcs):
+            if shutdown.is_set() or time.monotonic() >= deadline:
+                logger.info("[backfill] pausing at stream %d/%d; resumes "
+                            "after the next tick.", self.cursor, len(nslcs))
+                return
+            nslc = nslcs[self.cursor]
+            try:
+                self._fill_stream(nslc, masters, inventories[nslc],
+                                  deadline, shutdown)
+            except Exception as e:
+                logger.exception("[backfill] %s failed: %s",
+                                 ".".join(nslc), e)
+            if shutdown.is_set() or time.monotonic() >= deadline:
+                # _fill_stream may have stopped part-way; revisit it.
+                continue
+            self.cursor += 1
+        self.pass_open = False
+        self.last_pass_done = UTCDateTime()
+        added, changed, pngs = self._pass_stats
+        logger.info("[backfill] pass end: +%d PSDs in %d stream(s), %d PNG(s) "
+                    "re-rendered.", added, len(changed), pngs)
+
+    def _fill_stream(self, nslc, masters, inventory, deadline, shutdown):
+        from obspy.clients.fdsn.header import FDSNNoDataException
+
+        now = UTCDateTime()
+        win_end = now - self.live_margin
+        win_start = now - self.cfg.backfill_days * 86400.0
+        ppsd = masters.get(nslc)
+        times = list(ppsd.times_processed) if ppsd is not None else []
+        holes = find_holes(times, win_start, win_end, self.step)
+        if not holes:
+            return
+
+        before = set(t._ns for t in times)
+        net, sta, loc, cha = nslc
+        for h0, h1 in holes:
+            for f0, f1 in chunk_hole(h0, h1, self.cfg.ppsd_length, self.CHUNK):
+                if shutdown.is_set() or time.monotonic() >= deadline:
+                    break
+                key = (nslc, f0._ns)
+                tried = self.no_gain.get(key)
+                if tried is not None and now - tried < self.cfg.backfill_retry:
+                    continue
+                try:
+                    st = self.client.get_waveforms(net, sta, loc, cha, f0, f1)
+                except FDSNNoDataException:
+                    st = None
+                n0 = len(ppsd.times_processed) if ppsd is not None else 0
+                if st:
+                    if ppsd is None:
+                        ppsd = PPSD(st[0].stats, metadata=inventory,
+                                    ppsd_length=self.cfg.ppsd_length,
+                                    overlap=self.cfg.overlap)
+                        masters[nslc] = ppsd
+                    _add_quietly(ppsd, st, nslc)
+                n1 = len(ppsd.times_processed) if ppsd is not None else 0
+                if n1 > n0:
+                    self.no_gain.pop(key, None)
+                else:
+                    self.no_gain[key] = now
+            else:
+                continue
+            break  # deadline / shutdown inside the chunk loop
+
+        if ppsd is None:
+            return
+        new = [t for t in ppsd.times_processed if t._ns not in before]
+        if not new:
+            return
+        touched = buckets_touched(new, self.cfg.periods)
+        logger.info("[backfill] %s: +%d PSDs (%s → %s); re-rendering %d "
+                    "bucket(s).", ".".join(nslc), len(new),
+                    min(new).strftime("%Y-%m-%dT%H:%M"),
+                    max(new).strftime("%Y-%m-%dT%H:%M"), len(touched))
+        for (period, _key), t in sorted(touched.items()):
+            _render_and_log(self.cfg, ppsd, nslc, period, t,
+                            prefix="[backfill] ")
+        try:
+            _atomic_save_npz(ppsd, _npz_path(self.cfg.output_root, nslc))
+        except Exception as e:
+            logger.exception("[backfill] %s: NPZ save failed: %s",
+                             ".".join(nslc), e)
+        self._pass_stats[0] += len(new)
+        self._pass_stats[1].add(nslc)
+        self._pass_stats[2] += len(touched)
+
+
 def run_ppsd_archive(cfg: PPSDArchiveConfig) -> None:
     """Headless PPSD daemon: maintain master PPSDs, render per-bucket
     PNGs on a schedule, persist master NPZ files across restarts.
@@ -584,30 +852,9 @@ def run_ppsd_archive(cfg: PPSDArchiveConfig) -> None:
 
             ppsd = masters[nslc]
 
-            # Feed the rolling buffer — idempotent, but noisy without
-            # these warning suppressions. Anything else ObsPy warns about
-            # is recorded and response failures are logged, since a
-            # segment skipped for want of a response is otherwise
-            # invisible.
-            with warnings.catch_warnings(record=True) as caught:
-                warnings.simplefilter("always")
-                warnings.filterwarnings(
-                    "ignore",
-                    message=_SHORT_TRACE_WARNING_PATTERN,
-                    category=UserWarning,
-                )
-                warnings.filterwarnings(
-                    "ignore",
-                    message=_ALREADY_COVERED_WARNING_PATTERN,
-                    category=UserWarning,
-                )
-                ppsd.add(tr)
-            n_resp_fail = sum("response" in str(w.message) for w in caught)
-            if n_resp_fail:
-                logger.warning(
-                    "  %s: %d segment(s) skipped — no matching response.",
-                    ".".join(nslc), n_resp_fail,
-                )
+            # Feed the rolling buffer — idempotent; already-covered
+            # slices are skipped.
+            _add_quietly(ppsd, tr, nslc)
 
             n_total = len(ppsd.times_processed)
             if n_total == 0:
@@ -620,25 +867,7 @@ def run_ppsd_archive(cfg: PPSDArchiveConfig) -> None:
 
             # Render one PNG per active period.
             for period in cfg.periods:
-                start, end = bucket_bounds(period, now)
-                key = bucket_key(period, now)
-                png = _png_path(cfg.output_root, nslc, period, key)
-                try:
-                    got, expected = _render_bucket_png(
-                        ppsd, nslc, period, start, end,
-                        cfg.cmap, cfg.show_noise_models, png,
-                        cfg.palette,
-                    )
-                    pct = int(round(100.0 * got / expected)) if expected else 0
-                    logger.info(
-                        "  %s %s %s: %d / %d PSDs (%d%%) → %s",
-                        ".".join(nslc), period, key, got, expected, pct, png,
-                    )
-                except Exception as e:
-                    logger.exception(
-                        "  %s %s %s: render failed: %s",
-                        ".".join(nslc), period, key, e,
-                    )
+                _render_and_log(cfg, ppsd, nslc, period, now)
 
             # Persist the master NPZ every tick so the worst-case crash
             # loses at most ``render_interval`` of PPSD state.
@@ -653,6 +882,15 @@ def run_ppsd_archive(cfg: PPSDArchiveConfig) -> None:
 
         logger.info("[%s] render cycle end", tag)
 
+    backfiller = None
+    if cfg.backfill_days > 0:
+        # Leave the stretch the live buffer still holds to the tick.
+        try:
+            backfiller = _Backfiller(cfg, live_margin=buffer_seconds)
+        except Exception as e:
+            logger.error("Backfill disabled: could not reach dataselect at "
+                         "%s: %s", cfg.backfill_fdsn or cfg.fdsn_server, e)
+
     # Initial tick runs one render cycle promptly (so the user sees
     # progress immediately after startup instead of after the first
     # render_interval), but doesn't block shutdown if signal came
@@ -660,11 +898,18 @@ def run_ppsd_archive(cfg: PPSDArchiveConfig) -> None:
     if not shutdown.is_set():
         do_tick()
 
-    # Main loop: sleep up to render_interval, then tick. Signal wakes us.
+    # Main loop: tick every render_interval. Backfill, when enabled,
+    # works in the time between ticks and pauses at the next one, so the
+    # live histograms keep updating however much catching up there is.
+    next_tick = time.monotonic() + cfg.render_interval
     while not shutdown.is_set():
-        if shutdown.wait(cfg.render_interval):
+        if backfiller is not None and backfiller.due(UTCDateTime()):
+            backfiller.run(nslcs, masters, inventories,
+                           deadline=next_tick, shutdown=shutdown)
+        if shutdown.wait(max(0.0, next_tick - time.monotonic())):
             break
         do_tick()
+        next_tick = time.monotonic() + cfg.render_interval
 
     # Shutdown: one final tick so the latest state hits disk.
     logger.info("Shutdown requested; flushing final render + NPZs.")

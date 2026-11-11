@@ -133,6 +133,9 @@ built on [ObsPy](https://docs.obspy.org). Provides:
   renders three sets of PNGs per NSLC, all driven by the same master PPSD
 - Survives restarts: master PPSDs are serialized to `.npz` on every
   render cycle, reloaded on next startup
+- Optional backfill (`--backfill-days N`): fills hours with no PSD —
+  station outages, archiver downtime — from FDSN dataselect and
+  re-renders the buckets that change
 - Wildcard expansion via `--expand-wildcards` (one `INFO=STREAMS` query at
   startup, same mechanism as the archiver)
 - Soft-fail per-NSLC: stations whose response can't be loaded are
@@ -653,6 +656,25 @@ Any NSLC whose response can't be loaded is logged as a WARNING and
 skipped — the daemon keeps going with the rest. If **all** NSLCs fail
 response loading, the daemon exits with an error.
 
+**Backfill.** The daemon only sees data that arrives live over
+SeedLink, so an outage whose data is recovered later — or the time the
+archiver itself was down — would otherwise never get PSDs. With
+`--backfill-days N`, the daemon periodically looks back N days for
+stretches with no PSD, fetches them from FDSN dataselect (`--fdsn`, or
+`--backfill-fdsn` if the waveforms live elsewhere), adds them to the
+master PPSD and re-renders every daily/weekly/… bucket that gained
+PSDs. Notes:
+
+- It runs between render ticks and pauses at the next one, so a large
+  first catch-up (e.g. turning it on with 30 days of history to fill)
+  is spread over several cycles without holding up the live plots.
+- The last ~2 h are left to the live SeedLink buffer.
+- A stretch that yields nothing (no data in the archive — a dead
+  station) isn't re-requested for `--backfill-retry` seconds (default
+  a day). That memory is per process; a restart retries once.
+- New windows continue each stream's existing time grid, so backfilled
+  PSDs slot in beside the live ones.
+
 **Running as a service.** Minimal systemd unit:
 
 ```ini
@@ -1104,6 +1126,10 @@ Exactly one of `-I/-L/-Q/-G/-C` is required.
 | `--ppsd-length` | `3600` | PPSD segment length (seconds) |
 | `--overlap` | `0.5` | Segment overlap (0–1) |
 | `--expand-wildcards` | off | Expand `?` / `*` in NET/STA via `INFO=STREAMS` at startup |
+| `--backfill-days` | `0` (off) | Look back this many days for hours with no PSD and fill them from FDSN dataselect |
+| `--backfill-fdsn` | `--fdsn` | Dataselect base URL for backfill |
+| `--backfill-interval` | `21600` | Seconds between backfill passes once caught up |
+| `--backfill-retry` | `86400` | Seconds before re-requesting a stretch that gave no new PSDs |
 | `--cmap` | `pqlx` | Colormap for the 2-D histogram |
 | `--palette` | `neutral` | Colour palette for the figure chrome; always the light variant. `print` for greyscale |
 | `--no-noise-models` | off | Disable Peterson NLNM/NHNM overlay |

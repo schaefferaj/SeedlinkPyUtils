@@ -60,6 +60,9 @@ def build_parser():
             "      --expand-wildcards \\\n"
             "      --log-file /var/log/ppsd-archive.log\n"
             "\n"
+            "  # Same, also filling the last 30 days' gaps from dataselect\n"
+            "  seedlink-py-ppsd-archive 'CN.*..HH?' ... --backfill-days 30\n"
+            "\n"
             "Output layout:\n"
             "  <output-root>/<NET>.<STA>/<NSLC>.npz                (master state)\n"
             "  <output-root>/<NET>.<STA>/<period>/<NSLC>_<key>.png (one per bucket)\n"
@@ -109,6 +112,26 @@ def build_parser():
                        help="Path to a local StationXML file (overrides --fdsn).")
     g_src.add_argument("--no-cache", action="store_true",
                        help="Do not read or write the on-disk inventory cache.")
+
+    # ---- Backfill -----------------------------------------------------
+    g_bf = p.add_argument_group("Backfill")
+    g_bf.add_argument("--backfill-days", type=float, default=0.0,
+                      metavar="DAYS",
+                      help="Look back this many days for hours with no PSD\n"
+                           "(station outages, archiver downtime) and fill\n"
+                           "them from FDSN dataselect, re-rendering the\n"
+                           "buckets that change. Runs between render ticks.\n"
+                           "0 disables.")
+    g_bf.add_argument("--backfill-fdsn", default=None, metavar="URL",
+                      help="Dataselect base URL for backfill. Defaults to\n"
+                           "--fdsn.")
+    g_bf.add_argument("--backfill-interval", type=float, default=21600.0,
+                      metavar="SEC",
+                      help="Seconds between backfill passes once caught up.")
+    g_bf.add_argument("--backfill-retry", type=float, default=86400.0,
+                      metavar="SEC",
+                      help="Seconds before re-requesting a stretch that gave\n"
+                           "no new PSDs (e.g. data that doesn't exist).")
 
     # ---- PPSD segmentation --------------------------------------------
     g_ppsd = p.add_argument_group("PPSD segmentation")
@@ -186,6 +209,12 @@ def main(argv=None):
     if args.render_interval <= 0:
         parser.error(f"--render-interval must be positive, got {args.render_interval}")
 
+    if args.backfill_days < 0:
+        parser.error(f"--backfill-days must be >= 0, got {args.backfill_days}")
+    if args.backfill_days > 0 and not (args.backfill_fdsn or args.fdsn):
+        parser.error("--backfill-days needs a dataselect server: pass "
+                     "--backfill-fdsn or --fdsn.")
+
     cfg = PPSDArchiveConfig(
         streams=args.streams,
         output_root=args.output_root,
@@ -201,6 +230,10 @@ def main(argv=None):
         show_noise_models=args.show_noise_models,
         cmap=args.cmap,
         palette=args.palette,
+        backfill_days=args.backfill_days,
+        backfill_fdsn=args.backfill_fdsn,
+        backfill_interval=args.backfill_interval,
+        backfill_retry=args.backfill_retry,
     )
     try:
         run_ppsd_archive(cfg)
