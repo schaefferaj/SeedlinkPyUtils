@@ -67,8 +67,14 @@ header h1 a { color: var(--fg); }
 
 header nav { display: flex; gap: 1.5rem; }
 
-.theme-toggle {
+.host {
   margin-left: auto;
+  color: var(--fg-dim);
+  font-size: 0.85rem;
+}
+.host code { color: var(--fg); }
+
+.theme-toggle {
   background: none;
   color: var(--fg-dim);
   border: 1px solid var(--border);

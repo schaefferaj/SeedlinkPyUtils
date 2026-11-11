@@ -153,6 +153,7 @@ built on [ObsPy](https://docs.obspy.org). Provides:
   of every column), re-flowing live as the window is resized
 - Dark theme by default; a **Light** button in the header switches
   themes, remembered per browser
+- The header shows which machine is running the instance
 - **Several servers at once**: repeat `--server [LABEL=]HOST:PORT` for an
   aggregated "All" sub-tab plus one sub-tab per server; filters can be
   global or scoped per server with `LABEL=VALUE`

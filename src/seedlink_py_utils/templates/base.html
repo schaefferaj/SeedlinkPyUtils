@@ -26,6 +26,7 @@
          class="{% if request.endpoint and request.endpoint.startswith('ppsd_') %}active{% endif %}">PPSD Archive</a>
     {% endif %}
   </nav>
+  <span class="host" title="Machine running this instance">on <code>{{ hostname }}</code></span>
   <button type="button" class="theme-toggle" id="theme-toggle"></button>
 </header>
 <main{% block main_attrs %}{% endblock %}>

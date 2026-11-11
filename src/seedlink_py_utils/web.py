@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import re
+import socket
 import threading
 import time
 from dataclasses import dataclass, field
@@ -490,10 +491,14 @@ def create_app(cfg: WebConfig):
         poller.start()
         app._pollers.append(poller)
 
+    # Shown in the header so it's clear which machine serves the page.
+    hostname = socket.gethostname()
+
     def _tabs():
         return {
             "dashboard_enabled": cfg.dashboard_enabled,
             "ppsd_enabled": cfg.ppsd_enabled,
+            "hostname": hostname,
         }
 
     @app.route("/")
