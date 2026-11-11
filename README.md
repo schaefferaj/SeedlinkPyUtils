@@ -161,6 +161,9 @@ built on [ObsPy](https://docs.obspy.org). Provides:
   ppsd-archive output (networks → stations → channels → buckets)
   with thumbnails and per-image mtime polling so PNGs auto-refresh
   when the archiver writes new files
+- **3-Panel mode** on a station page: switch from Thumbnails to see
+  Z / N / E side by side, one row per day (or week, month, …) so the
+  same window can be compared across components; remembered per browser
 - Localhost-only by default; `--host 0.0.0.0` opts in to LAN visibility
 - No external JS dependencies (vanilla JS only) — works offline
 - Optional install: `pip install 'seedlink-py-utils[web]'`

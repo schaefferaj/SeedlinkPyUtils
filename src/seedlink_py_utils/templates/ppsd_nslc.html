@@ -39,31 +39,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-const MTIME_POLL_MS = 30000;
-
-async function checkOneImage(img) {
-  const relpath = img.dataset.relpath;
-  const oldMtime = parseInt(img.dataset.mtime, 10);
-  try {
-    const resp = await fetch(`/ppsd/file/${relpath}/mtime`);
-    if (!resp.ok) return;
-    const data = await resp.json();
-    if (data.mtime && data.mtime !== oldMtime) {
-      img.dataset.mtime = String(data.mtime);
-      const base = img.src.split('?')[0];
-      img.src = base + '?cb=' + data.mtime;
-    }
-  } catch (e) {
-    // Silent — network blip, next tick will retry.
-  }
-}
-
-async function checkAllImages() {
-  const imgs = document.querySelectorAll('.ppsd-image');
-  await Promise.all(Array.from(imgs).map(checkOneImage));
-}
-
-setInterval(checkAllImages, MTIME_POLL_MS);
-</script>
+<script src="{{ url_for('static', filename='ppsd.js') }}"></script>
 {% endblock %}

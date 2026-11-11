@@ -446,6 +446,61 @@ def latest_thumbnail_relpath(root: Path, network: str, station: str,
     return best[1] if best else None
 
 
+# Column order for the 3-panel view; anything else sorts after these.
+_COMPONENT_ORDER = "ZNE123"
+
+
+def component_groups(root: Path, network: str, station: str,
+                     nslcs: Sequence[Tuple[str, str]]) -> List[dict]:
+    """Group a station's channels into component sets for the 3-panel view.
+
+    Channels sharing a location and band/instrument code (e.g. ``00.HH?``)
+    form one group, with components ordered Z, N, E (then 1, 2, 3). For
+    each period, buckets are aligned by name so one row holds the same
+    time window for every component; a component with no PNG for that
+    bucket gets ``None`` in its cell.
+
+    Returns a list of dicts with ``label`` (e.g. ``"00.HH?"``),
+    ``channels`` and ``periods``; each period has ``period`` and
+    ``rows``, each row ``name`` and ``cells`` (bucket dict or None).
+    """
+    groups: Dict[Tuple[str, str], List[str]] = {}
+    for loc, cha in nslcs:
+        groups.setdefault((loc, cha[:-1]), []).append(cha)
+
+    def comp_key(cha: str):
+        i = _COMPONENT_ORDER.find(cha[-1])
+        return (i if i >= 0 else len(_COMPONENT_ORDER), cha)
+
+    out = []
+    for (loc, band), chans in sorted(groups.items()):
+        chans.sort(key=comp_key)
+        periods = []
+        for period in _PPSD_PERIODS:
+            by_cha = {
+                cha: {b["name"]: b for b in
+                      list_buckets(root, network, station, loc, cha, period)}
+                for cha in chans
+            }
+            names = sorted({n for bs in by_cha.values() for n in bs},
+                           reverse=True)
+            if names:
+                periods.append({
+                    "period": period,
+                    "rows": [{"name": n,
+                              "cells": [by_cha[c].get(n) for c in chans]}
+                             for n in names],
+                })
+        if periods:
+            out.append({
+                "label": f"{loc or '--'}.{band}?",
+                "loc_slug": loc or "--",
+                "channels": chans,
+                "periods": periods,
+            })
+    return out
+
+
 def _safe_file(root: Path, relpath: str) -> Optional[Path]:
     """Resolve ``relpath`` under ``root``, returning None if it escapes."""
     target = (root / relpath).resolve()
@@ -593,6 +648,7 @@ def create_app(cfg: WebConfig):
             net=net,
             sta=sta,
             entries=entries,
+            groups=component_groups(root, net, sta, nslcs),
             **_tabs(),
         )
 

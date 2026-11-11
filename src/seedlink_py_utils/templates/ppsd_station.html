@@ -1,7 +1,16 @@
 {% extends "base.html" %}
 {% block title %}PPSD: {{ net }}.{{ sta }}{% endblock %}
+{% block main_attrs %} class="wide"{% endblock %}
 {% block content %}
-<section class="ppsd">
+<section class="ppsd" id="ppsd-station">
+  <script>
+    // Apply the saved view before the page paints, so 3-Panel users
+    // don't see the thumbnails flash first.
+    try {
+      if (localStorage.getItem('ppsdView') === '3panel')
+        document.getElementById('ppsd-station').classList.add('mode-3panel');
+    } catch (e) {}
+  </script>
   <nav class="breadcrumb">
     <a href="{{ url_for('ppsd_index') }}">PPSD</a>
     <span>›</span>
@@ -10,29 +19,103 @@
     <strong>{{ sta }}</strong>
   </nav>
 
-  <h2>{{ net }}.{{ sta }} — channels</h2>
-  <p class="meta">Click a channel for the full bucket gallery. Thumbnails
-    show the most recent PNG (daily &gt; weekly &gt; monthly).</p>
+  <div class="title-row">
+    <h2>{{ net }}.{{ sta }} — channels</h2>
+    <div class="view-switch" role="group" aria-label="View">
+      <button type="button" data-view="thumbs">Thumbnails</button>
+      <button type="button" data-view="3panel">3-Panel</button>
+    </div>
+  </div>
 
-  <ul class="thumb-list">
-    {% for e in entries %}
-      <li>
-        <a href="{{ url_for('ppsd_nslc', net=net, sta=sta,
-                            loc=e.loc_slug, cha=e.cha) }}">
-          <div class="thumb-frame">
-            {% if e.thumbnail_relpath %}
-              <img src="{{ url_for('ppsd_file', relpath=e.thumbnail_relpath) }}"
-                   alt="{{ net }}.{{ sta }}.{{ e.loc }}.{{ e.cha }}" loading="lazy">
-            {% else %}
-              <div class="no-thumb">(no PNG yet)</div>
-            {% endif %}
+  <div class="view-thumbs">
+    <p class="meta">Click a channel for the full bucket gallery. Thumbnails
+      show the most recent PNG (daily &gt; weekly &gt; monthly).</p>
+
+    <ul class="thumb-list">
+      {% for e in entries %}
+        <li>
+          <a href="{{ url_for('ppsd_nslc', net=net, sta=sta,
+                              loc=e.loc_slug, cha=e.cha) }}">
+            <div class="thumb-frame">
+              {% if e.thumbnail_relpath %}
+                <img src="{{ url_for('ppsd_file', relpath=e.thumbnail_relpath) }}"
+                     alt="{{ net }}.{{ sta }}.{{ e.loc }}.{{ e.cha }}" loading="lazy">
+              {% else %}
+                <div class="no-thumb">(no PNG yet)</div>
+              {% endif %}
+            </div>
+            <div class="thumb-label">
+              <strong>{{ e.loc or '--' }}.{{ e.cha }}</strong>
+            </div>
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="view-3panel">
+    <p class="meta">Components side by side, one row per time window.
+      Click a plot to open it full size.</p>
+
+    {% for g in groups %}
+      {% if groups|length > 1 %}<h3 class="tp-group">{{ g.label }}</h3>{% endif %}
+      {% for p in g.periods %}
+        <details {% if loop.first %}open{% endif %} class="period-section">
+          <summary><h3>{{ p.period|capitalize }}</h3>
+            <span class="meta">{{ p.rows|length }}</span></summary>
+          <div class="tp-grid" style="--ncomp: {{ g.channels|length }}">
+            <div class="tp-head"></div>
+            {% for cha in g.channels %}
+              <div class="tp-head">
+                <a href="{{ url_for('ppsd_nslc', net=net, sta=sta,
+                                    loc=g.loc_slug, cha=cha) }}">{{ cha }}</a>
+              </div>
+            {% endfor %}
+            {% for row in p.rows %}
+              <div class="tp-name">{{ row.name }}</div>
+              {% for b in row.cells %}
+                {% if b %}
+                  <a class="tp-cell" href="{{ url_for('ppsd_file', relpath=b.relpath) }}"
+                     target="_blank" rel="noopener">
+                    <img src="{{ url_for('ppsd_file', relpath=b.relpath) }}?cb={{ b.mtime }}"
+                         data-relpath="{{ b.relpath }}"
+                         data-mtime="{{ b.mtime }}"
+                         class="ppsd-image"
+                         alt="{{ g.channels[loop.index0] }} {{ row.name }}" loading="lazy">
+                  </a>
+                {% else %}
+                  <div class="tp-cell tp-missing">no plot</div>
+                {% endif %}
+              {% endfor %}
+            {% endfor %}
           </div>
-          <div class="thumb-label">
-            <strong>{{ e.loc or '--' }}.{{ e.cha }}</strong>
-          </div>
-        </a>
-      </li>
+        </details>
+      {% endfor %}
     {% endfor %}
-  </ul>
+  </div>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const section = document.getElementById('ppsd-station');
+  const buttons = section.querySelectorAll('.view-switch button');
+  const sync = () => {
+    const tp = section.classList.contains('mode-3panel');
+    for (const b of buttons)
+      b.classList.toggle('active', (b.dataset.view === '3panel') === tp);
+  };
+  for (const b of buttons) {
+    b.addEventListener('click', () => {
+      const tp = b.dataset.view === '3panel';
+      section.classList.toggle('mode-3panel', tp);
+      try { localStorage.setItem('ppsdView', tp ? '3panel' : 'thumbs'); } catch (e) {}
+      sync();
+    });
+  }
+  sync();
+})();
+</script>
+<script src="{{ url_for('static', filename='ppsd.js') }}"></script>
 {% endblock %}

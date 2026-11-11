@@ -376,3 +376,86 @@ main.wide { max-width: none; }
   gap: 1rem;
   align-items: start;
 }
+
+/* ---- PPSD station: thumbnails / 3-panel switch ---- */
+
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+.title-row h2 { margin: 0; }
+
+.view-switch {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.view-switch button {
+  background: none;
+  color: var(--fg-dim);
+  border: none;
+  padding: 0.3rem 0.9rem;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.view-switch button + button { border-left: 1px solid var(--border); }
+.view-switch button:hover { color: var(--fg); }
+.view-switch button.active { background: var(--panel); color: var(--accent); }
+
+.ppsd .view-3panel { display: none; }
+.ppsd.mode-3panel .view-3panel { display: block; }
+.ppsd.mode-3panel .view-thumbs { display: none; }
+
+.tp-group {
+  margin: 1.5rem 0 0;
+  font-family: ui-monospace, monospace;
+}
+.period-section summary .meta { margin-left: 0.4rem; }
+
+/* Date label column, then one equal column per component, capped at
+   the PNGs' native 1200 px so a single-component station isn't blown up. */
+.tp-grid {
+  display: grid;
+  grid-template-columns: max-content repeat(var(--ncomp, 3), minmax(0, 1200px));
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  padding-top: 0.75rem;
+}
+.tp-head {
+  font-family: ui-monospace, monospace;
+  font-weight: 600;
+  text-align: center;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel);
+  padding: 0.25rem 0;
+}
+.tp-name {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+.tp-cell {
+  display: block;
+  background: #fff;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.tp-cell img { width: 100%; display: block; }
+.tp-missing {
+  background: none;
+  border: 1px dashed var(--border);
+  color: var(--fg-dim);
+  font-style: italic;
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 2rem 0;
+}
