@@ -258,6 +258,20 @@ def _try_load_npz(
             f"Move or delete the file and re-run to start fresh."
         ) from e
 
+    # ObsPy's load_npz builds the PPSD from placeholder stats and only
+    # then restores the real SEED id, so the responses it preloads in
+    # __init__ match nothing and come back empty. Every later add() then
+    # fails with "No matching response found" — silently, since add()
+    # only warns — and a reloaded stream stops gaining PSDs. Redo the
+    # preload now that the id is right.
+    if inventory is not None:
+        ppsd.responses = ppsd._preload_responses()
+        if not ppsd.responses:
+            logger.warning(
+                "No response in the inventory matches %s; new data for it "
+                "will be rejected.", ppsd.id,
+            )
+
     if abs(ppsd.ppsd_length - expected_length) > 1e-6:
         raise RuntimeError(
             f"Existing NPZ at {path} has ppsd_length={ppsd.ppsd_length}, "
@@ -571,8 +585,12 @@ def run_ppsd_archive(cfg: PPSDArchiveConfig) -> None:
             ppsd = masters[nslc]
 
             # Feed the rolling buffer — idempotent, but noisy without
-            # these warning suppressions.
-            with warnings.catch_warnings():
+            # these warning suppressions. Anything else ObsPy warns about
+            # is recorded and response failures are logged, since a
+            # segment skipped for want of a response is otherwise
+            # invisible.
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
                 warnings.filterwarnings(
                     "ignore",
                     message=_SHORT_TRACE_WARNING_PATTERN,
@@ -584,6 +602,12 @@ def run_ppsd_archive(cfg: PPSDArchiveConfig) -> None:
                     category=UserWarning,
                 )
                 ppsd.add(tr)
+            n_resp_fail = sum("response" in str(w.message) for w in caught)
+            if n_resp_fail:
+                logger.warning(
+                    "  %s: %d segment(s) skipped — no matching response.",
+                    ".".join(nslc), n_resp_fail,
+                )
 
             n_total = len(ppsd.times_processed)
             if n_total == 0:
